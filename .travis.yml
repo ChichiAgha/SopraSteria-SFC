@@ -5,7 +5,6 @@ dist: trusty
 sudo: true
 addons:
   chrome: stable
-cache: npm
 install:
     - npm install
 before_install:
@@ -17,6 +16,8 @@ before_script:
     - "sudo chown root /opt/google/chrome/chrome-sandbox"
     - "sudo chmod 4755 /opt/google/chrome/chrome-sandbox"
     - export CHROME_BIN=chromium-browser
+script:
+    - npm run build
 deploy:
   - provider: cloudfoundry
     edge: true  
