@@ -5,9 +5,6 @@ dist: trusty
 sudo: true
 addons:
   chrome: stable
-env:
-  - FOO=src
-  - FOO=server
 install:
     - npm install
 before_install:
@@ -20,8 +17,7 @@ before_script:
     - "sudo chmod 4755 /opt/google/chrome/chrome-sandbox"
     - export CHROME_BIN=chromium-browser
 script:
-  echo $FOO
-#    - npm run build
+    - npm run build
 deploy:
   - provider: cloudfoundry
     edge: true  
@@ -33,5 +29,4 @@ deploy:
     space: sandbox
     manifest: manifest.travis.yml
     on:
-        branch: travis_speed_test
-        repo
+        branch: travis_speed_test 
