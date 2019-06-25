@@ -19,8 +19,14 @@ before_script:
     - "sudo chown root /opt/google/chrome/chrome-sandbox"
     - "sudo chmod 4755 /opt/google/chrome/chrome-sandbox"
     - export CHROME_BIN=chromium-browser
+    - echo $TRAVIS_COMMIT
+    - echo $TRAVIS_TAG
+    - echo $TRAVIS_BRANCH
+    - echo $TRAVIS_BUILD_NUMBER
+    - echo $B_NAME
+    - echo $FOO
 script:
-    echo $FOO
+    
 #    - npm run build
 deploy:
   - provider: cloudfoundry
