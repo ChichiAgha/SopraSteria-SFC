@@ -1,0 +1,29 @@
+language: node_js
+node_js:
+- '10.10.0'
+dist: trusty
+sudo: true
+addons:
+  chrome: stable
+env:
+    - FOO=src
+    - FOO=server
+install:
+    - npm install
+before_install:
+    - export CHROME_BIN=chromium-browser
+    - export DISPLAY=:99.0
+    - sh -e /etc/init.d/xvfb start
+    - google-chrome-stable --headless --no-sandbox --disable-gpu --remote-debugging-port=9876 http://localhost &
+before_script:
+    - "sudo chown root /opt/google/chrome/chrome-sandbox"
+    - "sudo chmod 4755 /opt/google/chrome/chrome-sandbox"
+    - export CHROME_BIN=chromium-browser
+    - echo $TRAVIS_COMMIT
+    - echo $TRAVIS_TAG
+    - echo $TRAVIS_BRANCH
+    - echo $TRAVIS_BUILD_NUMBER
+    - echo $B_NAME
+    - echo $FOO
+script:
+    - npm run build
