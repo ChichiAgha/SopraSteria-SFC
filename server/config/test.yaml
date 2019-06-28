@@ -2,12 +2,12 @@ aws:
     region: eu-west-1
     secrets:
         use: true
-        wallet: staging/api
+        wallet: demo/api
 
 db:
     pool: 15
     ssl: true
-    username: sfcapp
+    username: sfcdemoapp
     database: sfctstdb
     client_ssl:
         status: true
@@ -17,7 +17,7 @@ slack:
     level : 3     # enables Slack notifications
 
 jwt:
-    iss: 'sfcstaging.cloudapps.digital'
+    iss: 'sfcaccessibility.cloudapps.digital'
     ttl:
         login: 10
 
