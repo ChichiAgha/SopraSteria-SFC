@@ -7,8 +7,8 @@ aws:
 db:
     pool: 15
     ssl: true
-    username: sfcdemoapp
-    database: sfctstdb
+    username: sfcdemoadmin
+    database: sfcdemodb
     client_ssl:
         status: true
         usingFiles: false
