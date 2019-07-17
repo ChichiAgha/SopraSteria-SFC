@@ -1714,7 +1714,9 @@ class Worker {
     const mySocialCareIndicator = (this._currentLine.SCQUAL && this._currentLine.SCQUAL.length > 0) ?
       parseInt(mySocialCare[0]) : '';
 
-    if (isNaN(mySocialCareIndicator)) {
+    console.log('mySocialCareIndicator', mySocialCareIndicator)
+
+    if (isNaN(mySocialCareIndicator) || this._currentLine.SCQUAL.length === 0) {
       this._validationErrors.push({
         worker: this._currentLine.UNIQUEWORKERID,
         name: this._currentLine.LOCALESTID,
@@ -1795,7 +1797,7 @@ class Worker {
     const myNonSocialCareIndicator = (this._currentLine.NONSCQUAL && this._currentLine.NONSCQUAL.length > 0) ?
       parseInt(myNonSocialCare[0]) : '';
 
-    if (isNaN(myNonSocialCareIndicator)) {
+    if (isNaN(myNonSocialCareIndicator) || this._currentLine.NONSCQUAL.length === 0) {
       this._validationErrors.push({
         worker: this._currentLine.UNIQUEWORKERID,
         name: this._currentLine.LOCALESTID,
