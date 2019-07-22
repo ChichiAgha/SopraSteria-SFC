@@ -2,15 +2,8 @@
   <div class="govuk-grid-column-full">
     <p>You have been signed out.</p>
 
-    <a routerLink="/login" role="button" draggable="false" class="govuk-button">
+    <a [routerLink]="['/login']" role="button" draggable="false" class="govuk-button">
       Sign in
     </a>
-
-    <p>
-      Go to
-      <a href="https://asc-wds.skillsforcare.org.uk/login" target="_blank" rel="noopener"
-        >https://asc-wds.skillsforcare.org.uk/login</a
-      >
-    </p>
   </div>
 </div>

@@ -1,5 +1,6 @@
 import { NgModule } from '@angular/core';
 import { RouterModule, Routes } from '@angular/router';
+import { WorkerResolver } from '@core/resolvers/worker.resolver';
 
 import { AddEditQualificationComponent } from './add-edit-qualification/add-edit-qualification.component';
 import { AddEditTrainingComponent } from './add-edit-training/add-edit-training.component';
@@ -31,6 +32,8 @@ import { MainJobStartDateComponent } from './main-job-start-date/main-job-start-
 import { MentalHealthProfessionalComponent } from './mental-health-professional/mental-health-professional.component';
 import { NationalInsuranceNumberComponent } from './national-insurance-number/national-insurance-number.component';
 import { NationalityComponent } from './nationality/nationality.component';
+import { NursingCategoryComponent } from './nursing-category/nursing-category.component';
+import { NursingSpecialismComponent } from './nursing-specialism/nursing-specialism.component';
 import { OtherJobRolesComponent } from './other-job-roles/other-job-roles.component';
 import { OtherQualificationsLevelComponent } from './other-qualifications-level/other-qualifications-level.component';
 import { OtherQualificationsComponent } from './other-qualifications/other-qualifications.component';
@@ -45,7 +48,6 @@ import { StaffRecordComponent } from './staff-record/staff-record.component';
 import { TotalStaffComponent } from './total-staff/total-staff.component';
 import { WeeklyContractedHoursComponent } from './weekly-contracted-hours/weekly-contracted-hours.component';
 import { WorkerSaveSuccessComponent } from './worker-save-success/worker-save-success.component';
-import { WorkerResolver } from './worker.resolver';
 import { YearArrivedUkComponent } from './year-arrived-uk/year-arrived-uk.component';
 
 const routes: Routes = [
@@ -62,6 +64,7 @@ const routes: Routes = [
   {
     path: 'basic-records-start-screen',
     component: CreateBasicRecordsStartScreenComponent,
+    data: { title: 'Create Basic Records Start' },
   },
   {
     path: 'create-basic-records',
@@ -104,11 +107,6 @@ const routes: Routes = [
         data: { title: 'Staff Details' },
       },
       {
-        path: 'mental-health-professional',
-        component: MentalHealthProfessionalComponent,
-        data: { title: 'Mental Health Professional' },
-      },
-      {
         path: 'main-job-start-date',
         component: MainJobStartDateComponent,
         data: { title: 'Main Job Role Start Date' },
@@ -117,6 +115,21 @@ const routes: Routes = [
         path: 'other-job-roles',
         component: OtherJobRolesComponent,
         data: { title: 'Other Job Roles' },
+      },
+      {
+        path: 'nursing-category',
+        component: NursingCategoryComponent,
+        data: { title: 'Nursing Category' },
+      },
+      {
+        path: 'nursing-specialism',
+        component: NursingSpecialismComponent,
+        data: { title: 'Nursing Specialism' },
+      },
+      {
+        path: 'mental-health-professional',
+        component: MentalHealthProfessionalComponent,
+        data: { title: 'Mental Health Professional' },
       },
       {
         path: 'national-insurance-number',

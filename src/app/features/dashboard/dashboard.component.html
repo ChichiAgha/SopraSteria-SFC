@@ -1,12 +1,23 @@
-<app-dashboard-header></app-dashboard-header>
+<div class="govuk-grid-row">
+  <div class="govuk-grid-column-two-thirds">
+    <h1 class="govuk-heading-l">
+      <span *ngIf="workplace?.parentName" class="govuk-caption-xl">{{ workplace.parentName }}: Parent</span>
+      {{ workplace?.name }}
+    </h1>
+  </div>
 
-<p *ngIf="establishment?.parentName" class="govuk-caption-l govuk-!-margin-bottom-2">{{ establishment.parentName }}</p>
-<p *ngIf="establishment?.isParent" class="govuk-caption-l govuk-!-margin-bottom-2">Parent</p>
-<h1 class="govuk-heading-l govuk-!-padding-top-0 govuk-!-margin-bottom-4">{{ establishment?.name }}</h1>
+  <div class="govuk-grid-column-one-third">
+    <h2 class="govuk-heading-m">Contact Skills for Care</h2>
+    <p>
+      0113 241 0969<br />
+      <a href="mailto:ascwds@skillsforcare.org.uk">ascwds@skillsforcare.org.uk</a>
+    </p>
+  </div>
+</div>
 
 <div class="govuk-grid-row">
   <div class="govuk-grid-column-two-thirds">
-    <p>Workplace ID: {{ establishment?.nmdsId }}</p>
+    <p>Workplace ID: {{ workplace?.nmdsId }}</p>
   </div>
   <div class="govuk-grid-column-one-third">
     <p *ngIf="lastLoggedIn" class="govuk-!-font-size-16">Last signed in {{ lastLoggedIn | date: 'd MMMM y' }}</p>
@@ -18,6 +29,10 @@
     <app-tabs>
       <app-tab [title]="'Home'">
         <app-home-tab></app-home-tab>
+      </app-tab>
+
+      <app-tab [title]="'User accounts'">
+        <app-user-accounts-summary *ngIf="workplace" [workplace]="workplace"></app-user-accounts-summary>
       </app-tab>
 
       <app-tab [title]="'Workplace'">

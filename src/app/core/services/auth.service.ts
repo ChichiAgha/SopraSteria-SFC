@@ -1,10 +1,13 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Injectable } from '@angular/core';
-import { Params, Router, UrlSegment } from '@angular/router';
+import { Router } from '@angular/router';
+import { LoggedInEstablishment, LoggedInMainService, LoggedInSession } from '@core/model/logged-in.model';
 import { BehaviorSubject, Observable } from 'rxjs';
 import { ErrorObservable } from 'rxjs-compat/observable/ErrorObservable';
+
 import { RegistrationTrackerError } from '../model/registrationTrackerError.model';
-import { LoggedInEstablishment, LoggedInMainService, LoggedInSession } from '@core/model/logged-in.model';
+import { EstablishmentService } from './establishment.service';
+import { UserService } from './user.service';
 
 @Injectable({
   providedIn: 'root',
@@ -22,7 +25,12 @@ export class AuthService {
   // Observable login stream
   public auth$: Observable<LoggedInSession> = this._auth$.asObservable();
 
-  constructor(private http: HttpClient, private router: Router) {}
+  constructor(
+    private http: HttpClient,
+    private router: Router,
+    private establishmentService: EstablishmentService,
+    private userService: UserService
+  ) {}
 
   public get isLoggedIn(): boolean {
     return !!this.token;
@@ -56,6 +64,18 @@ export class AuthService {
       return false;
     }
   }
+  public get isFirstBulkUpload(): boolean {
+    if (this._session) {
+      return this._session.establishment.isFirstBulkUpload;
+    } else {
+      return true;
+    }
+  }
+
+  public set isFirstBulkUpload(isFirstBulkUpload) {
+    this._session.establishment.isFirstBulkUpload = isFirstBulkUpload;
+  }
+
   public get lastLoggedIn() {
     return this._session ? this._session.lastLoggedIn : null;
   }
@@ -120,6 +140,8 @@ export class AuthService {
       localStorage.clear();
       this._session = null;
       this.token = null;
+      this.userService.loggedInUser = null;
+      this.establishmentService.resetState();
       this.router.navigate(['/logged-out']);
     }
   }

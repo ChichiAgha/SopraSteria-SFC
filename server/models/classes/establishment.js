@@ -3,7 +3,7 @@
  *
  * The encapsulation of a Establishment, including all properties, all specific validation (not API, but object validation),
  * saving & restoring of data to database (via sequelize model), construction and deletion.
- * 
+ *
  * Also includes representation as JSON, in one or more presentations.
  */
 const uuid = require('uuid');
@@ -18,6 +18,7 @@ const ValidationMessage = require('./validations/validationMessage').ValidationM
 const Worker = require('./worker').Worker;
 
 // notifications
+const AWSKinesis = require('../../aws/kinesis');
 
 // temp formatters
 const ServiceFormatters = require('../api/services');
@@ -33,6 +34,10 @@ const SEQUELIZE_DOCUMENT_TYPE = require('./user/userProperties').SEQUELIZE_DOCUM
 // WDF Calculator
 const WdfCalculator = require('./wdfCalculator').WdfCalculator;
 
+// service cache
+const ServiceCache = require('../cache/singletons/services').ServiceCache;
+const CapacitiesCache = require('../cache/singletons/capacities').CapacitiesCache;
+
 // Errors for initialise and registration error - this needs to be refactored out DB
 class RegistrationException {
     constructor(originalError, errCode, errMessage) {
@@ -40,12 +45,12 @@ class RegistrationException {
       this.errCode = errCode;
       this.errMessage = errMessage;
     };
-  
+
     toString() {
       return `${this.errCode}: ${this.errMessage}`;
     };
 };
-  
+
 const responseErrors = {
     unknownNMDSsequence: {
       errCode: -500,
@@ -71,8 +76,13 @@ class Establishment extends EntityValidator {
 
         // localised attributes
         this._name = null;
-        this._address = null;
+        this._address1 = null;
+        this._address2 = null;
+        this._address3 = null;
+        this._town = null;
+        this._county = null;
         this._locationId = null;
+        this._provId = null;
         this._postcode = null;
         this._isRegulated = null;
         this._mainService = null;
@@ -85,6 +95,9 @@ class Establishment extends EntityValidator {
         this._dataOwner = null;
         this._parentPermissions = null;
 
+        // interim reasons for leaving - https://trello.com/c/vNHbfdms
+        this._reasonsForLeaving = null;
+
         // abstracted properties
         const thisEstablishmentManager = new EstablishmentProperties();
         this._properties =thisEstablishmentManager.manager;
@@ -95,7 +108,7 @@ class Establishment extends EntityValidator {
         // all known workers for this establishment - an associative object (property key is the worker's key)
         this._workerEntities = {};
         this._readyForDeletionWorkers = null;
-        
+
         // default logging level - errors only
         // TODO: INFO logging on User; change to LOG_ERROR only
         this._logLevel = Establishment.LOG_INFO;
@@ -134,11 +147,39 @@ class Establishment extends EntityValidator {
         return this._properties.get('Name') ? this._properties.get('Name').property : null;
     };
     get address() {
-        return this._address;
+      // returns concatenated address
+      const addressParts = [];
+      this._address1 ? addressParts.push(this._address1) : true;
+      this._address2 ? addressParts.push(this._address2) : true;
+      this._address3 ?  addressParts.push(this._address3) : true;
+      this._town ? addressParts.push(this._town) : true;
+      this._county ? addressParts.push(this._county) : true;
+      return addressParts.join(', ');
+    }
+    get address1() {
+        return this._address1;
     };
+    get address1() {
+        return this._address1;
+    };
+    get address2() {
+      return this._address2;
+    };
+    get address3() {
+      return this._address3;
+    };
+    get town() {
+      return this._town;
+    }
+    get county() {
+      return this._county;
+    }
     get locationId() {
-        return this._locationId;
+      return this._locationId;
     };
+    get provId() {
+      return this._provId;
+    }
     get postcode() {
         return this._postcode;
     };
@@ -148,6 +189,40 @@ class Establishment extends EntityValidator {
     get mainService() {
         return this._properties.get('MainServiceFK') ? this._properties.get('MainServiceFK').property : null;
     };
+    get employerType() {
+        return this._properties.get('EmployerType') ? this._properties.get('EmployerType').property : null;
+    };
+    get localIdentifier() {
+      return this._properties.get('LocalIdentifier') ? this._properties.get('LocalIdentifier').property : null;
+    };
+    get shareWith() {
+      return this._properties.get('ShareData') ? this._properties.get('ShareData').property : null;
+    };
+    get shareWithLA() {
+      return this._properties.get('ShareWithLA') ? this._properties.get('ShareWithLA').property : null;
+    }
+    get otherServices() {
+      return this._properties.get('OtherServices') ? this._properties.get('OtherServices').property : null;
+    }
+    get capacities() {
+      return this._properties.get('CapacityServices') ? this._properties.get('CapacityServices').property : null;
+    }
+    get serviceUsers() {
+      return this._properties.get('ServiceUsers') ? this._properties.get('ServiceUsers').property : null;
+    }
+    get starters() {
+      return this._properties.get('Starters') ? this._properties.get('Starters').property : null;
+    }
+    get leavers() {
+      return this._properties.get('Leavers') ? this._properties.get('Leavers').property : null;
+    }
+    get vacancies() {
+      return this._properties.get('Vacancies') ? this._properties.get('Vacancies').property : null;
+    }
+    get reasonsForLeaving() {
+      return this._reasonsForLeaving;
+    }
+
     get nmdsId() {
         return this._nmdsId;
     }
@@ -180,6 +255,10 @@ class Establishment extends EntityValidator {
         return this._properties.get('NumberOfStaff') ? this._properties.get('NumberOfStaff').property : 0;
     }
 
+    get key(){
+        return ((this._properties.get('LocalIdentifier') && this._properties.get('LocalIdentifier').property) ? this.localIdentifier.replace(/\s/g, "") : this.name).replace(/\s/g, "");
+    }
+
     // used by save to initialise a new Establishment; returns true if having initialised this Establishment
     _initialise() {
         if (this._uid === null) {
@@ -194,15 +273,20 @@ class Establishment extends EntityValidator {
     }
 
     // external method to initialise the mandatory non-extendable properties
-    initialise(address, locationId, postcode, isRegulated) {
+    initialise(address1, address2, address3, town, county, locationId, provId, postcode, isRegulated) {
 
         // NMDS ID will be calculated when saving this establishment for the very first time - on creation only
         this._nmdsId = null;
 
-        this._address = address;
+        this._address1 = address1;
+        this._address2 = address2;
+        this._address3 = address3;
+        this._town = town;
+        this._county = county;
         this._postcode = postcode;
         this._isRegulated = isRegulated;
         this._locationId = locationId;
+        this._provId = provId;
     }
 
     initialiseSub(parentID, parentUid){
@@ -229,6 +313,18 @@ class Establishment extends EntityValidator {
         }
     }
 
+    get workers() {
+        if (this._workerEntities) {
+            return Object.values(this._workerEntities);
+        } else {
+            return [];
+        }
+    }
+
+    theWorker(key) {
+        return this._workerEntities && key ? this._workerEntities[key] : null;
+    }
+
 
     // takes the given JSON document and creates an Establishment's set of extendable properties
     // Returns true if the resulting Establishment is valid; otherwise false
@@ -236,27 +332,84 @@ class Establishment extends EntityValidator {
         try {
             this.resetValidations();
 
+            // inject all services against this establishment
+            const isRegulated = document.IsCQCRegulated || document.isRegulated;
+            document.allMyServices = ServiceCache.allMyServices(isRegulated);
+
+            // inject all capacities against this establishment - note, "other services" can be represented by the JSON document attribute "services" or "otherServices"
+            const allAssociatedServiceIndices = [];
+            if (document.mainService) {
+                allAssociatedServiceIndices.push(document.mainService.id);
+            }
+            if (document && document.otherServices && Array.isArray(document.otherServices)) {
+                document.otherServices.forEach(thisService => {
+                  if (thisService.id) {
+                    allAssociatedServiceIndices.push(thisService.id);
+                  } else if (thisService.services && Array.isArray(thisService.services)) {
+                    thisService.services.forEach(innerService => {
+                      allAssociatedServiceIndices.push(innerService.id)
+                    });
+                  }
+                });
+            }
+            if (document && document.services && Array.isArray(document.services)) {
+                document.services.forEach(thisService => allAssociatedServiceIndices.push(thisService.id));
+            }
+            document.allServiceCapacityQuestions = CapacitiesCache.allMyCapacities(allAssociatedServiceIndices);
+
             await this._properties.restore(document, JSON_DOCUMENT_TYPE);
+
+            // CQC reugulated/location ID
+            if (document.hasOwnProperty('isRegulated')) {
+                this._isRegulated = document.isRegulated;
+            }
+            if (document.locationId) {
+                // Note - there is more validation to do on location ID - so this really should be a managed property
+                this._locationId = document.locationId;
+            }
+            if (document.provId) {
+              // Note - there is more validation to do on location ID - so this really should be a managed property
+              this._provId = document.provId;
+            }
+            if (document.address1) {
+              // if address is given, allow reset on all address components
+              this._address1 = document.address1;
+              this._address2 = document.address2 ? document.address2 : '';
+              this._address3 = document.address3 ? document.address3 : '';
+              this._town = document.town ? document.town : '';
+              this._county = document.county ? document.county : '';
+            }
+            if (document.postcode) {
+              this._postcode = document.postcode;
+            }
+
+            if (document.reasonsForLeaving || document.reasonsForLeaving === '') {
+              this._reasonsForLeaving = document.reasonsForLeaving;
+            }
 
             // allow for deep restoration of entities (associations - namely Worker here)
             if (associatedEntities) {
                 const promises = [];
                 if (document.workers && Array.isArray(document.workers)) {
                     document.workers.forEach(thisWorker => {
-                        const workerKey = thisWorker.nameOrId.replace(/\s/g, "");
+                      // we're loading from JSON, not entity, so there is no key property; so add it
+                      thisWorker.key = thisWorker.localIdentifier ? thisWorker.localIdentifier.replace(/\s/g, "") : thisWorker.nameOrId.replace(/\s/g, "");
 
-                        // check if we already have the Worker associated, before associating a new worker
-                        if (this._workerEntities[workerKey]) {
-                            // else we already have this worker, load changes against it
-                            promises.push(this._workerEntities[workerKey].load(thisWorker, true));
+                      // check if we already have the Worker associated, before associating a new worker
+                      if (this._workerEntities[thisWorker.key]) {
+                          // the local identifier is required during bulk upload for reasoning; but against the worker itself, it's immutable.
+                          delete thisWorker.localIdentifier;
 
-                        } else {
-                            const newWorker = new Worker(null);
+                          // else we already have this worker, load changes against it
+                          promises.push(this._workerEntities[thisWorker.key].load(thisWorker, true));
 
-                            // TODO - until we have Worker.localIdentifier we only have Worker.nameOrId to use as key
-                            this.associateWorker(workerKey, newWorker);
-                            promises.push(newWorker.load(thisWorker, true));    
-                        }
+                      } else {
+                          const newWorker = new Worker(null);
+
+                          // TODO - until we have Worker.localIdentifier we only have Worker.nameOrId to use as key
+                          this.associateWorker(thisWorker.key, newWorker);
+                          promises.push(newWorker.load(thisWorker, true));
+                      }
 
                     });
 
@@ -264,7 +417,9 @@ class Establishment extends EntityValidator {
                     // however, how do we mark for deletion those no longer required
                     this._readyForDeletionWorkers = [];
                     Object.values(this._workerEntities).forEach(thisWorker => {
-                        const foundWorker = document.workers.find(givenWorker => givenWorker.nameOrId === thisWorker.nameOrId);
+                        const foundWorker = document.workers.find(givenWorker => {
+                          return givenWorker.key === thisWorker.key
+                        });
                         if (!foundWorker) {
                             this._readyForDeletionWorkers.push(thisWorker);
                         }
@@ -294,15 +449,12 @@ class Establishment extends EntityValidator {
             if (thisEstablishmentIsValid && Array.isArray(thisEstablishmentIsValid) && this._validations.length == 0) {
                 const propertySuffixLength = 'Property'.length * -1;
                 thisEstablishmentIsValid.forEach(thisInvalidProp => {
-                    // temporarily quashing Services and Capacity property invalid warnings (whilst cache is being worked on)
-                    if (!(thisInvalidProp === 'ServicesProperty' || thisInvalidProp === 'CapacityProperty')) {
-                        this._validations.push(new ValidationMessage(
-                            ValidationMessage.WARNING,
-                            111111111,
-                            'Invalid',
-                            [thisInvalidProp.slice(0,propertySuffixLength)],
-                        ));
-                    }
+                    this._validations.push(new ValidationMessage(
+                        ValidationMessage.WARNING,
+                        111111111,
+                        'Invalid',
+                        [thisInvalidProp.slice(0,propertySuffixLength)],
+                    ));
                 });
             }
 
@@ -318,7 +470,7 @@ class Establishment extends EntityValidator {
                     thisWorker.establishmentId = this._id;
                     return thisWorker;
                 });
-    
+
                 await Promise.all(workersAsArray.map(thisWorkerToSave => thisWorkerToSave.save(savedBy, bulkUploaded, 0, externalTransaction, true)));
 
                 // and now all the associated Workers marked for deletion
@@ -359,15 +511,15 @@ class Establishment extends EntityValidator {
                         attributes: ['id', 'name', 'nmdsIdLetter']
                     }]
                 });
-        
+
                 let nmdsLetter = null;
                 if (cssrResults && cssrResults.postcode === this._postcode && cssrResults.theAuthority && cssrResults.theAuthority.id && Number.isInteger(cssrResults.theAuthority.id)) {
                     nmdsLetter = cssrResults.theAuthority.nmdsIdLetter;
                 } else {
                     // No direct match so do the fuzzy match
-                    const [firstHalfOfPostcode] = `postcode`.split(' '); 
+                    const [firstHalfOfPostcode] = `postcode`.split(' ');
                     const fuzzyCssrNmdsIdMatch = await models.sequelize.query(`select "Cssr"."NmdsIDLetter" from cqcref.pcodedata, cqc."Cssr" where postcode like \'${escape(firstHalfOfPostcode)}%\' and pcodedata.local_custodian_code = "Cssr"."LocalCustodianCode" group by "Cssr"."NmdsIDLetter" limit 1`, { type: models.sequelize.QueryTypes.SELECT });
-        
+
                     if (fuzzyCssrNmdsIdMatch && fuzzyCssrNmdsIdMatch[0] && fuzzyCssrNmdsIdMatch[0] && fuzzyCssrNmdsIdMatch[0].NmdsIDLetter) {
                         nmdsLetter = fuzzyCssrNmdsIdMatch[0].NmdsIDLetter;
                     }
@@ -377,10 +529,10 @@ class Establishment extends EntityValidator {
                 if (nmdsLetter === null) {
                     nmdsLetter = 'W';
                 }
-        
+
                 let nextNmdsIdSeqNumber = 0;
                 const nextNmdsIdSeqNumberResults = await models.sequelize.query('SELECT nextval(\'cqc."NmdsID_seq"\')', { type: models.sequelize.QueryTypes.SELECT });
-                
+
                 if (nextNmdsIdSeqNumberResults && nextNmdsIdSeqNumberResults[0] && nextNmdsIdSeqNumberResults[0] && nextNmdsIdSeqNumberResults[0].nextval) {
                     nextNmdsIdSeqNumber = parseInt(nextNmdsIdSeqNumberResults[0].nextval);
                 } else {
@@ -394,7 +546,11 @@ class Establishment extends EntityValidator {
                 const creationDocument = {
                     uid: this.uid,
                     NameValue: this.name,
-                    address: this._address,
+                    address1: this._address1,
+                    address2: this._address2,
+                    address3: this._address3,
+                    town: this._town,
+                    county: this._county,
                     postcode: this._postcode,
                     isParent: this._isParent,
                     parentUid: this._parentUid,
@@ -403,6 +559,7 @@ class Establishment extends EntityValidator {
                     parentPermissions: this._parentPermissions,
                     isRegulated: this._isRegulated,
                     locationId: this._locationId,
+                    proviId: this._provId,
                     MainServiceFKValue: this.mainService.id,
                     nmdsId: this._nmdsId,
                     updatedBy: savedBy.toLowerCase(),
@@ -486,19 +643,28 @@ class Establishment extends EntityValidator {
                     });
                     await Promise.all(createModelPromises);
 
+                    // this is an async method - don't wait for it to return
+                    AWSKinesis.establishmentPump(AWSKinesis.CREATED, this.toJSON());
+
                     // if requested, propagate the saving of this establishment down to each of the associated entities
                     if (associatedEntities) {
                         await this.saveAssociatedEntities(savedBy, bulkUploaded, thisTransaction);
                     }
-                    
+
                     this._log(Establishment.LOG_INFO, `Created Establishment with uid (${this.uid}), id (${this._id}) and name (${this.name})`);
                 });
-                
+
             } catch (err) {
                 // need to handle duplicate Establishment
                 if (err.name && err.name === 'SequelizeUniqueConstraintError') {
                     if (err.parent.constraint && ( err.parent.constraint === 'Establishment_unique_registration_with_locationid' || err.parent.constraint === 'Establishment_unique_registration')) {
                         throw new EstablishmentExceptions.EstablishmentSaveException(null, this.uid, this.name, 'Duplicate Establishment', 'Duplicate Establishment');
+                    }
+                }
+
+                if (err.name && err.name === 'SequelizeUniqueConstraintError') {
+                    if(err.parent.constraint && ( err.parent.constraint === 'establishment_LocalIdentifier_unq')){
+                        throw new EstablishmentExceptions.EstablishmentSaveException(null, this.uid, this.name, 'Duplicate LocalIdentifier', 'Duplicate LocalIdentifier');
                     }
                 }
 
@@ -533,6 +699,16 @@ class Establishment extends EntityValidator {
                     const updateDocument = {
                         ...modifedUpdateDocument,
                         source: bulkUploaded ? 'Bulk' : 'Online',
+                        isRegulated: this._isRegulated,                         // to remove when a change managed property
+                        locationId: this._locationId,                           // to remove when a change managed property
+                        provId: this._provId,                                   // to remove when a change managed property
+                        address1: this._address1,
+                        address2: this._address2,
+                        address3: this._address3,
+                        town: this._town,
+                        county: this._county,
+                        postcode: this._postcode,
+                        reasonsForLeaving: this._reasonsForLeaving,
                         updated: updatedTimestamp,
                         updatedBy: savedBy.toLowerCase()
                     };
@@ -585,7 +761,7 @@ class Establishment extends EntityValidator {
                         if (wdfAudit) {
                             wdfAudit.establishmentFk = this._id;
                             allAuditEvents.push(wdfAudit);
-                        }    
+                        }
                         await models.establishmentAudit.bulkCreate(allAuditEvents, {transaction: thisTransaction});
 
                         // now - work through any additional models having processed all properties (first delete and then re-create)
@@ -620,7 +796,7 @@ class Establishment extends EntityValidator {
                         });
                         await Promise.all(createModelPromises);
 
-                        /*
+                        /* https://trello.com/c/5V5sAa4w
                         // TODO: ideally I'd like to publish this to pub/sub topic and process async - but do not have pub/sub to hand here
                         // having updated the Establishment, check to see whether it is necessary to recalculate
                         //  the overall WDF eligibility for this establishment and all its workers
@@ -633,13 +809,15 @@ class Establishment extends EntityValidator {
                         } else {
                             // TODO - include Completed logic.
                             await WdfCalculator.calculate(savedBy.toLowerCase(), this._id, this._uid, thisTransaction);
-                        }
-                        */
+                        } */
 
                         // if requested, propagate the saving of this establishment down to each of the associated entities
                         if (associatedEntities) {
                             await this.saveAssociatedEntities(savedBy, bulkUploaded, thisTransaction);
                         }
+
+                        // this is an async method - don't wait for it to return
+                        AWSKinesis.establishmentPump(AWSKinesis.UPDATED, this.toJSON());
 
                         this._log(Establishment.LOG_INFO, `Updated Establishment with uid (${this.uid}) and name (${this.name})`);
 
@@ -648,8 +826,14 @@ class Establishment extends EntityValidator {
                         throw new EstablishmentExceptions.EstablishmentSaveException(null, this.uid, this.name, `Failed to update resulting establishment record with id: ${this._id}`, `Failed to update resulting establishment record with id: ${this._id}`);
                     }
                 });
-                
+
             } catch (err) {
+                if (err.name && err.name === 'SequelizeUniqueConstraintError') {
+                    if(err.parent.constraint && ( err.parent.constraint === 'establishment_LocalIdentifier_unq')){
+                        throw new EstablishmentExceptions.EstablishmentSaveException(null, this.uid, this.name, 'Duplicate LocalIdentifier', 'Duplicate LocalIdentifier');
+                    }
+                }
+
                 throw new EstablishmentExceptions.EstablishmentSaveException(null, this.uid, this.name, err, `Failed to update establishment record with id: ${this._id}`);
             }
 
@@ -661,7 +845,7 @@ class Establishment extends EntityValidator {
     // loads the Establishment (with given id or uid) from DB, but only if it belongs to the known User
     // returns true on success; false if no User
     // Can throw EstablishmentRestoreException exception.
-    async restore(id, showHistory=false, associatedEntities=false) {
+    async restore(id, showHistory=false, associatedEntities=false, associatedLevel=1) {
         if (!id) {
             throw new EstablishmentExceptions.EstablishmentRestoreException(null,
                 null,
@@ -691,7 +875,7 @@ class Establishment extends EntityValidator {
             }
 
             const fetchResults = await models.establishment.findOne(fetchQuery);
-            
+
             if (fetchResults && fetchResults.id && Number.isInteger(fetchResults.id)) {
                 // update self - don't use setters because they modify the change state
                 this._isNew = false;
@@ -702,8 +886,14 @@ class Establishment extends EntityValidator {
                 this._updatedBy = fetchResults.updatedBy;
 
                 this._name = fetchResults.NameValue;
-                this._address = fetchResults.address;
+                this._address1 = fetchResults.address1;
+                this._address2 = fetchResults.address2;
+                this._address3 = fetchResults.address3;
+                this._town = fetchResults.town;
+                this._county = fetchResults.county;
+
                 this._locationId = fetchResults.locationId;
+                this._provId = fetchResults.provId;
                 this._postcode = fetchResults.postcode;
                 this._isRegulated = fetchResults.isRegulated;
 
@@ -715,6 +905,9 @@ class Establishment extends EntityValidator {
                 this._parentUid = fetchResults.parentUid;
                 this._dataOwner = fetchResults.dataOwner;
                 this._parentPermissions = fetchResults.parentPermissions;
+
+                // interim solution for reason for leaving
+                this._reasonsForLeaving = fetchResults.reasonsForLeaving;
 
                 // if history of the User is also required; attach the association
                 //  and order in reverse chronological - note, order on id (not when)
@@ -749,24 +942,14 @@ class Establishment extends EntityValidator {
                     raw: true
                 });
 
-                const [otherServices, mainService, serviceUsers, capacity, jobs, localAuthorities] = await Promise.all([ 
-                    models.services.findAll({
-                        where: {
-                            id: establishmentServices.map(su => su.serviceId)
-                        },
-                        attributes: ['id', 'name', 'category'],
-                        order: [
-                            ['category', 'ASC'],
-                            ['name', 'ASC']
-                        ],
-                        raw: true,
-                    }),
+                const [otherServices, mainService, serviceUsers, capacity, jobs, localAuthorities] = await Promise.all([
+                    ServiceCache.allMyOtherServices(establishmentServices.map(x => x)),
                     models.services.findOne({
                         where: {
                             id : fetchResults.MainServiceFKValue
-                        },                    
+                        },
                         attributes: ['id', 'name'],
-                        raw: true   
+                        raw: true
                     }),
                     models.serviceUsers.findAll({
                         where: {
@@ -814,7 +997,7 @@ class Establishment extends EntityValidator {
                     })
                 ]);
 
-                // For services merge any other data into resultset 
+                // For services merge any other data into resultset
                 fetchResults.serviceUsers = establishmentServiceUserResults.map((suResult)=>{
                     const serviceUser = serviceUsers.find(element => { return suResult.serviceUserId === element.id});
                     if(suResult.other) {
@@ -837,7 +1020,7 @@ class Establishment extends EntityValidator {
                     } else {
                         return otherService;
                     }
-                });                
+                });
 
                 fetchResults.capacity = capacity;
                 fetchResults.jobs = jobs;
@@ -852,27 +1035,8 @@ class Establishment extends EntityValidator {
                 };
 
                 // other services output requires a list of ALL services available to
-                //  the Establishment
-                if (fetchResults.isRegulated) {
-                    // other services for CQC regulated is ALL including non-CQC
-                    fetchResults.allMyServices = await models.services.findAll({
-                        order: [
-                            ['category', 'ASC'],
-                            ['name', 'ASC']
-                        ]
-                    });
-                } else {
-                    fetchResults.allMyServices = await models.services.findAll({
-                        where: {
-                            iscqcregistered: false
-                        },
-                        order: [
-                            ['category', 'ASC'],
-                            ['name', 'ASC']
-                        ]
-                    });  
-                }
-
+                // the Establishment
+                fetchResults.allMyServices = ServiceCache.allMyServices(fetchResults.isRegulated);
 
                 // service capacities output requires a list of ALL service capacities available to
                 //  the Establishment
@@ -895,8 +1059,13 @@ class Establishment extends EntityValidator {
                         }
                     ]
                 });
-        
+
                 const allAssociatedServiceIndices = [];
+
+                // console.log('allCapacitiesResults.mainService', allCapacitiesResults.mainService)
+                // console.log('allCapacitiesResults.otherServices', allCapacitiesResults.otherServices)
+
+
                 if (allCapacitiesResults && allCapacitiesResults.id) {
                     // merge tha main and other service ids
                     if (allCapacitiesResults.mainService.id) {
@@ -908,29 +1077,10 @@ class Establishment extends EntityValidator {
                         allCapacitiesResults.otherServices.forEach(thisService => allAssociatedServiceIndices.push(thisService.id));
                     }
                 }
-        
+
                 // now fetch all the questions for the given set of combined services
                 if (allAssociatedServiceIndices.length > 0) {
-                    fetchResults.allServiceCapacityQuestions = await models.serviceCapacity.findAll({
-                        where: {
-                            serviceId: allAssociatedServiceIndices
-                        },
-                        attributes: ['id', 'seq', 'question'],
-                        order: [
-                            ['seq', 'ASC']
-                        ],
-                        include: [
-                            {
-                                model: models.services,
-                                as: 'service',
-                                attributes: ['id', 'category', 'name'],
-                                order: [
-                                    ['category', 'ASC'],
-                                    ['name', 'ASC']
-                                ]
-                            }
-                        ]
-                    });
+                    fetchResults.allServiceCapacityQuestions = CapacitiesCache.allMyCapacities(allAssociatedServiceIndices)
                 } else {
                     fetchResults.allServiceCapacityQuestions = null;
                 }
@@ -953,11 +1103,11 @@ class Establishment extends EntityValidator {
                         }
                     ]
                 });
-                
+
                 if (cssrResults && cssrResults.postcode === fetchResults.postcode &&
                     cssrResults.theAuthority && cssrResults.theAuthority.id &&
                     Number.isInteger(cssrResults.theAuthority.id)) {
-                    
+
                     fetchResults.primaryAuthorityCssr = {
                         id: cssrResults.theAuthority.id,
                         name: cssrResults.theAuthority.name
@@ -965,8 +1115,8 @@ class Establishment extends EntityValidator {
 
                 } else {
                     //  using just the first half of the postcode
-                    const [firstHalfOfPostcode] = fetchResults.postcode.split(' '); 
-                    
+                    const [firstHalfOfPostcode] = fetchResults.postcode.split(' ');
+
                     // must escape the string to prevent SQL injection
                     const fuzzyCssrIdMatch = await models.sequelize.query(
                         `select "Cssr"."CssrID", "Cssr"."CssR" from cqcref.pcodedata, cqc."Cssr" where postcode like \'${escape(firstHalfOfPostcode)}%\' and pcodedata.local_custodian_code = "Cssr"."LocalCustodianCode" group by "Cssr"."CssrID", "Cssr"."CssR" limit 1`,
@@ -981,7 +1131,7 @@ class Establishment extends EntityValidator {
                         }
                     }
                 }
- 
+
                 if (fetchResults.auditEvents) {
                     this._auditEvents = fetchResults.auditEvents;
                 }
@@ -991,6 +1141,9 @@ class Establishment extends EntityValidator {
 
                 // certainly for bulk upload, but also expected for cross-entity validations, restore all associated entities (workers)
                 if (associatedEntities) {
+                    // restoring associated entities can be resource expensive, especially if doing deep restore of associated entities
+                    //  - that is especially true if restoring the training and qualification records for each of the Workers.
+                    //  Only pass down the restoration of Worker's associated entities if the association level is more than one level
                     const myWorkerSet = await models.worker.findAll({
                         attributes: ['uid'],
                         where: {
@@ -1002,11 +1155,11 @@ class Establishment extends EntityValidator {
                     if (myWorkerSet && Array.isArray(myWorkerSet)) {
                         await Promise.all(myWorkerSet.map(async thisWorker => {
                             const newWorker = new Worker(this._id);
-                            await newWorker.restore(thisWorker.uid, false);
+                            await newWorker.restore(thisWorker.uid, false, associatedLevel > 1 ? associatedEntities : false, associatedLevel);
 
                             // TODO: once we have the unique worder id property, use that instead; for now, we only have the name or id.
                             // without whitespace
-                            this.associateWorker(newWorker.nameOrId.replace(/\s/g, ""), newWorker);
+                            this.associateWorker(newWorker.key, newWorker);
 
                             return {};
                         }));
@@ -1062,7 +1215,7 @@ class Establishment extends EntityValidator {
                         establishmentFk: this._id,
                         username: deletedBy,
                         type: 'deleted'}];
-                       
+
                     await models.establishmentAudit.bulkCreate(allAuditEvents, {transaction: thisTransaction});
 
                     // if deleting this establishment, and if requested, then delete all the associated entities (workers) too
@@ -1075,23 +1228,26 @@ class Establishment extends EntityValidator {
                         }
                     }
 
+                    // this is an async method - don't wait for it to return
+                    AWSKinesis.establishmentPump(AWSKinesis.DELETED, this.toJSON());
+
                     this._log(Establishment.LOG_INFO, `Archived Establishment with uid (${this._uid}) and id (${this._id})`);
 
                 } else {
                     const nameId = this._properties.get('NameOrId');
-                    throw new EstablishmentExceptions.EstablishmentDeleteException(null, 
-                                                                        this.uid, 
+                    throw new EstablishmentExceptions.EstablishmentDeleteException(null,
+                                                                        this.uid,
                                                                         nameId ? nameId.property : null,
                                                                         err,
                                                                         `Failed to update (archive) estabalishment record with uid: ${this._uid}`);
                 }
-                                                                        
+
             });
         } catch (err) {
             console.log('throwing error');
             console.log(err);
-            throw new EstablishmentExceptions.EstablishmentDeleteException(null, 
-                this.uid, 
+            throw new EstablishmentExceptions.EstablishmentDeleteException(null,
+                this.uid,
                 nameId ? nameId.property : null,
                 err,
                 `Failed to update (archive) estabalishment record with uid: ${this._uid}`);
@@ -1158,14 +1314,21 @@ class Establishment extends EntityValidator {
 
             if (fullDescription) {
                 myDefaultJSON.address = this.address;
+                myDefaultJSON.address1 = this.address1;
+                myDefaultJSON.address2 = this.address2;
+                myDefaultJSON.address3 = this.address3;
+                myDefaultJSON.town = this.town;
+                myDefaultJSON.county = this.county;
                 myDefaultJSON.postcode = this.postcode;
-                myDefaultJSON.locationRef = this.locationId;
+                myDefaultJSON.locationId = this.locationId;
+                myDefaultJSON.provId = this.provId;
                 myDefaultJSON.isRegulated = this.isRegulated;
                 myDefaultJSON.nmdsId = this.nmdsId;
                 myDefaultJSON.isParent = this.isParent;
                 myDefaultJSON.parentUid = this.parentUid;
                 myDefaultJSON.dataOwner = this.dataOwner;
                 myDefaultJSON.parentPermissions = this.isParent ? undefined : this.parentPermissions;
+                myDefaultJSON.reasonsForLeaving = this.reasonsForLeaving;
             }
 
             myDefaultJSON.created = this.created ? this.created.toJSON() : null;
@@ -1235,7 +1398,8 @@ class Establishment extends EntityValidator {
                 this._log(Establishment.LOG_ERROR, 'Establishment::hasMandatoryProperties - missing or invalid main service');
             }
 
-            if (!(this._address)) {
+            // must at least have the first line of address
+            if (!(this._address1)) {
                 allExistAndValid = false;
                 this._validations.push(new ValidationMessage(
                     ValidationMessage.ERROR,
@@ -1243,7 +1407,7 @@ class Establishment extends EntityValidator {
                     this._address ? `Invalid: ${this._address}` : 'Missing',
                     ['Address']
                 ));
-                this._log(Establishment.LOG_ERROR, 'Establishment::hasMandatoryProperties - missing or invalid address');
+                this._log(Establishment.LOG_ERROR, 'Establishment::hasMandatoryProperties - missing or invalid first line of address');
             }
 
             if (!(this._postcode)) {
@@ -1279,6 +1443,18 @@ class Establishment extends EntityValidator {
                 ));
                 this._log(Establishment.LOG_ERROR, 'Establishment::hasMandatoryProperties - missing or invalid Location ID for a (CQC) Regulated workspace');
             }
+
+            // prov id can be null for a Non-CQC site - CANNOT IMPOST THIS PROPERTY AS IT IS NOT YET COMING FROM REGISTRATION
+            // if (this._isRegulated && this._provId === null) {
+            //   allExistAndValid = false;
+            //   this._validations.push(new ValidationMessage(
+            //       ValidationMessage.ERROR,
+            //       106,
+            //       'Missing (mandatory) for a CQC Registered site',
+            //       ['ProvID']
+            //   ));
+            //   this._log(Establishment.LOG_ERROR, 'Establishment::hasMandatoryProperties - missing or invalid Prov ID for a (CQC) Regulated workspace');
+            // }
 
         } catch (err) {
             console.error(err)
@@ -1380,7 +1556,7 @@ class Establishment extends EntityValidator {
         myWdf['vacancies'] = this._isPropertyWdfBasicEligible(effectiveFromEpoch, this._properties.get('Vacancies')) ? 'Yes' : 'No';
         myWdf['starters'] = this._isPropertyWdfBasicEligible(effectiveFromEpoch, this._properties.get('Starters')) ? 'Yes' : 'No';
         myWdf['leavers'] = this._isPropertyWdfBasicEligible(effectiveFromEpoch, this._properties.get('Leavers')) ? 'Yes' : 'No';
-        
+
         return myWdf;
     }
 
@@ -1393,6 +1569,24 @@ class Establishment extends EntityValidator {
             ... await this.isWdfEligible(effectiveFrom)
         };
         return myWDF;
+    }
+
+    // for the given establishment, updates the last bulk uploaded timestamp
+    static async bulkUploadSuccess(establishmentId) {
+      try {
+        await models.establishment.update(
+          {
+            lastBulkUploaded: new Date()
+          },
+          {
+            where: {
+              id: establishmentId
+            }
+          }
+        );
+      } catch (err) {
+        this._log(Establishment.LOG_ERROR, `bulkUploadSuccess - failed: ${err}`);
+      }
     }
 };
 

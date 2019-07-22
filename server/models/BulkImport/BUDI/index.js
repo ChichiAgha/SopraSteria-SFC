@@ -127,7 +127,7 @@ class BUDI {
       { "ASC":9, "BUDI":3},
       { "ASC":10, "BUDI":28},
       { "ASC":11, "BUDI":6},
-      { "ASC":12, "BUDI":26},
+      { "ASC":12, "BUDI":29},
       { "ASC":13, "BUDI":5},
       { "ASC":14, "BUDI":4},
       { "ASC":15, "BUDI":7},
@@ -248,7 +248,7 @@ class BUDI {
             type: 'Other',
           };
           break;
-  
+
         default:
           // return null
       }
@@ -348,7 +348,7 @@ class BUDI {
       { "ASC": 5, "BUDI": 37},
       { "ASC": 30, "BUDI": 38},
       { "ASC": 1, "BUDI": 39},
-      { "ASC": 34, "BUDI": 40},      
+      { "ASC": 34, "BUDI": 40},
     ];
 
     if (direction == BUDI.TO_ASC) {
@@ -944,7 +944,8 @@ class BUDI {
     const fixedMapping = [
       { "BUDI": 1, "ASC": 1},
       { "BUDI": 2, "ASC": 2},
-      { "BUDI": 4, "ASC": 3},
+      { "BUDI": 3, "ASC": 3},
+      { "BUDI": 4, "ASC": 4},
       { "BUDI": 5, "ASC": 5},
       { "BUDI": 6, "ASC": 6},
       { "BUDI": 7, "ASC": 7},
@@ -994,11 +995,9 @@ class BUDI {
       { "BUDI": 4, "ASC": 93 },
       { "BUDI": 5, "ASC": 94 },
       { "BUDI": 6, "ASC": 95 },
-      { "BUDI": 7, "ASC": 112 },
       { "BUDI": 8, "ASC": 24 },
       { "BUDI": 9, "ASC": 99 },
       { "BUDI": 10, "ASC": 100 },
-      { "BUDI": 11, "ASC": 112 },
       { "BUDI": 12, "ASC": 25 },
       { "BUDI": 13, "ASC": 102 },
       { "BUDI": 14, "ASC": 107 },
@@ -1008,17 +1007,11 @@ class BUDI {
       { "BUDI": 18, "ASC": 71 },
       { "BUDI": 19, "ASC": 16 },
       { "BUDI": 20, "ASC": 1 },
-      { "BUDI": 21, "ASC": 112 },
       { "BUDI": 22, "ASC": 14 },
-      { "BUDI": 23, "ASC": 112 },
-      { "BUDI": 24, "ASC": 112 },
       { "BUDI": 25, "ASC": 15 },
       { "BUDI": 26, "ASC": 26 },
       { "BUDI": 27, "ASC": 114 },
       { "BUDI": 28, "ASC": 116 },
-      { "BUDI": 29, "ASC": 112 },
-      { "BUDI": 30, "ASC": 112 },
-      { "BUDI": 31, "ASC": 112 },
       { "BUDI": 32, "ASC": 115 },
       { "BUDI": 33, "ASC": 113 },
       { "BUDI": 34, "ASC": 111 },
@@ -1029,11 +1022,6 @@ class BUDI {
       { "BUDI": 39, "ASC": 119 },
       { "BUDI": 41, "ASC": 20 },
       { "BUDI": 42, "ASC": 30 },
-      { "BUDI": 43, "ASC": 28 },
-      { "BUDI": 44, "ASC": 91 },
-      { "BUDI": 45, "ASC": 91 },
-      { "BUDI": 46, "ASC": 91 },
-      { "BUDI": 47, "ASC": 91 },
       { "BUDI": 48, "ASC": 4 },
       { "BUDI": 49, "ASC": 5 },
       { "BUDI": 50, "ASC": 60 },
@@ -1045,28 +1033,16 @@ class BUDI {
       { "BUDI": 56, "ASC": 83 },
       { "BUDI": 57, "ASC": 84 },
       { "BUDI": 58, "ASC": 85 },
-      { "BUDI": 59, "ASC": 112 },
-      { "BUDI": 60, "ASC": 112 },
-      { "BUDI": 61, "ASC": 112 },
       { "BUDI": 62, "ASC": 86 },
       { "BUDI": 63, "ASC": 87 },
       { "BUDI": 64, "ASC": 88 },
-      { "BUDI": 65, "ASC": 134 },
-      { "BUDI": 66, "ASC": 134 },
       { "BUDI": 67, "ASC": 21 },
       { "BUDI": 68, "ASC": 22 },
-      { "BUDI": 69, "ASC": 91 },
-      { "BUDI": 70, "ASC": 91 },
-      { "BUDI": 71, "ASC": 91 },
       { "BUDI": 72, "ASC": 23 },
       { "BUDI": 73, "ASC": 32 },
       { "BUDI": 74, "ASC": 19 },
       { "BUDI": 76, "ASC": 64 },
       { "BUDI": 77, "ASC": 65 },
-      { "BUDI": 78, "ASC": 112 },
-      { "BUDI": 79, "ASC": 112 },
-      { "BUDI": 80, "ASC": 112 },
-      { "BUDI": 81, "ASC": 112 },
       { "BUDI": 82, "ASC": 103 },
       { "BUDI": 83, "ASC": 104 },
       { "BUDI": 84, "ASC": 105 },
@@ -1082,7 +1058,6 @@ class BUDI {
       { "BUDI": 94, "ASC": 66 },
       { "BUDI": 95, "ASC": 67 },
       { "BUDI": 96, "ASC": 11 },
-      { "BUDI": 97, "ASC": 27 },
       { "BUDI": 98, "ASC": 59 },
       { "BUDI": 99, "ASC": 6 },
       { "BUDI": 100, "ASC": 7 },
@@ -1091,7 +1066,6 @@ class BUDI {
       { "BUDI": 103, "ASC": 8 },
       { "BUDI": 104, "ASC": 75 },
       { "BUDI": 105, "ASC": 76 },
-      { "BUDI": 106, "ASC": 27 },
       { "BUDI": 107, "ASC": 3 },
       { "BUDI": 108, "ASC": 47 },
       { "BUDI": 109, "ASC": 74 },
@@ -1108,11 +1082,10 @@ class BUDI {
       const found = fixedMapping.find(thisQualification => thisQualification.BUDI == originalCode);
       return found ? found.ASC : null;
     } else {
-      const found = fixedMapping.find(thisQualification => thisSpecialist.ASC == originalCode)
+      const found = fixedMapping.find(thisQualification => thisQualification.ASC == originalCode)
       return found ? found.BUDI : null;
     }
   }
-
 
   static capacity(direction, originalCode) {
     if (ALL_CAPACITIES) {
@@ -1150,7 +1123,45 @@ class BUDI {
       return null;
     }
   }
-  
+
+  static serviceFromCapacityId(serviceCapacityId) {
+    if (ALL_CAPACITIES) {
+      const foundCapacity = ALL_CAPACITIES.find(thisCapacity => {
+        if (thisCapacity.serviceCapacityId === serviceCapacityId) {
+          return true;
+        } else {
+          return false;
+        }
+      });
+
+      // foundCapacity will be undefined if not found
+      return foundCapacity ? foundCapacity.serviceId : null;
+
+    } else {
+      return null;
+    }
+  }
+
+
+  static serviceFromUtilisationId(serviceCapacityId) {
+    if (ALL_UTILISATIONS) {
+      const foundCapacity = ALL_UTILISATIONS.find(thisCapacity => {
+        if (thisCapacity.serviceCapacityId === serviceCapacityId) {
+          return true;
+        } else {
+          return false;
+        }
+      });
+
+      // foundCapacity will be undefined if not found
+      return foundCapacity ? foundCapacity.serviceId : null;
+
+    } else {
+      return null;
+    }
+  }
+
+
   // more to come
 }
 

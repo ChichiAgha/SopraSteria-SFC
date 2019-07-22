@@ -11,6 +11,8 @@ import { ServiceUnavailableComponent } from '@core/components/error/service-unav
 import { FooterComponent } from '@core/components/footer/footer.component';
 import { HeaderComponent } from '@core/components/header/header.component';
 import { AuthGuard } from '@core/guards/auth/auth.guard';
+import { LoggedInUserResolver } from '@core/resolvers/logged-in-user.resolver';
+import { PrimaryWorkplaceResolver } from '@core/resolvers/primary-workplace.resolver';
 import { AuthInterceptor } from '@core/services/auth-interceptor';
 import { BackService } from '@core/services/back.service';
 import { CountryService } from '@core/services/country.service';
@@ -27,7 +29,6 @@ import { NationalityService } from '@core/services/nationality.service';
 import { QualificationService } from '@core/services/qualification.service';
 import { RecruitmentService } from '@core/services/recruitment.service';
 import { RegistrationService } from '@core/services/registration.service';
-import { TitleService } from '@core/services/title.service';
 import { TrainingService } from '@core/services/training.service';
 import { WindowRef } from '@core/services/window.ref';
 import { WorkerService } from '@core/services/worker.service';
@@ -40,10 +41,6 @@ import { ForgotYourPasswordEditComponent } from '@features/forgot-your-password/
 import { ForgotYourPasswordComponent } from '@features/forgot-your-password/forgot-your-password.component';
 import { LoginComponent } from '@features/login/login.component';
 import { LogoutComponent } from '@features/logout/logout.component';
-import {
-  EligibilityDisplayOverviewComponent,
-} from '@features/reports/eligibility-display-overview/eligibility-display-overview.component';
-import { ReportsComponent } from '@features/reports/reports.component';
 import { ResetPasswordConfirmationComponent } from '@features/reset-password/confirmation/confirmation.component';
 import { ResetPasswordEditComponent } from '@features/reset-password/edit/edit.component';
 import { ResetPasswordComponent } from '@features/reset-password/reset-password.component';
@@ -58,7 +55,6 @@ import { AppComponent } from './app.component';
   declarations: [
     AppComponent,
     DashboardComponent,
-    EligibilityDisplayOverviewComponent,
     FooterComponent,
     ForgotYourPasswordComponent,
     ForgotYourPasswordConfirmationComponent,
@@ -69,7 +65,6 @@ import { AppComponent } from './app.component';
     LogoutComponent,
     PageNotFoundComponent,
     ProblemWithTheServiceComponent,
-    ReportsComponent,
     ResetPasswordComponent,
     ResetPasswordConfirmationComponent,
     ResetPasswordEditComponent,
@@ -107,7 +102,6 @@ import { AppComponent } from './app.component';
     QualificationService,
     RecruitmentService,
     RegistrationService,
-    TitleService,
     TrainingService,
     WindowRef,
     WorkerService,
@@ -121,6 +115,8 @@ import { AppComponent } from './app.component';
       useClass: AuthInterceptor,
       multi: true,
     },
+    LoggedInUserResolver,
+    PrimaryWorkplaceResolver,
   ],
   bootstrap: [AppComponent],
 })

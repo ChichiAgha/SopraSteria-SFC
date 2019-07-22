@@ -5,6 +5,7 @@ const uuid = require('uuid');
 const isLocal = require('../utils/security/isLocalTest').isLocal;
 const bcrypt = require('bcrypt-nodejs');
 const slack = require('../utils/slack/slack-logger');
+const sns = require('../aws/sns');
 
 const models = require('../models');
 
@@ -56,7 +57,7 @@ router.get('/service/:name', async (req, res) => {
         message: `Service name '${requestedServiceName}' not found`,
       });
     }
-  
+
   } catch (err) {
     // TODO - improve logging/error reporting
     console.error('registration GET service/:name - failed', err);
@@ -294,7 +295,7 @@ router.route('/')
       if (!passwordCheck(req.body[0].user.password)) {
         return res.status(400).json({
           "success" : 0,
-          "message" : "Invalid Password" 
+          "message" : "Invalid Password"
         });
       }
     }
@@ -318,6 +319,10 @@ router.route('/')
       const Estblistmentdata = {
         Name : req.body[0].locationName,
         Address : concatenateAddress(req.body[0].addressLine1, req.body[0].addressLine2, req.body[0].townCity, req.body[0].county),
+        Address1 : req.body[0].addressLine1,
+        Address2 : req.body[0].addressLine2,
+        Town: req.body[0].townCity,
+        County: req.body[0].county,
         LocationID: req.body[0].locationId,
         PostCode: req.body[0].postalCode,
         MainService: req.body[0].mainService,
@@ -328,10 +333,10 @@ router.route('/')
       const Userdata = {
         FullName : req.body[0].user.fullname,
         JobTitle : req.body[0].user.jobTitle,
-        Email    : req.body[0].user.emailAddress,
-        Phone    : req.body[0].user.contactNumber,
+        Email    : req.body[0].user.email,
+        Phone    : req.body[0].user.phone,
         SecurityQuestion: req.body[0].user.securityQuestion,
-        SecurityQuestionAnswer: req.body[0].user.securityAnswer,
+        SecurityQuestionAnswer: req.body[0].user.securityQuestionAnswer,
         DateCreated: new Date(),
         EstablishmentID:0,
         AdminUser: true
@@ -382,21 +387,26 @@ router.route('/')
               responseErrors.unexpectedMainService.errMessage
             );
           }
-          
+
           if (serviceResults.other && Estblistmentdata.MainServiceOther && Estblistmentdata.MainServiceOther.length > OTHER_MAX_LENGTH){
             throw new RegistrationException(
               `Other field value of '${Estblistmentdata.MainServiceOther}' greater than length ${OTHER_MAX_LENGTH}`,
               responseErrors.unexpectedMainService.errCode,
               responseErrors.unexpectedMainService.errMessage
-            );            
+            );
           }
 
           // now create establishment - using the extended property encapsulation
           defaultError = responseErrors.establishment;
           const newEstablishment = new EstablishmentModel(Logindata.UserName);
           newEstablishment.initialise(
-            Estblistmentdata.Address,
+            Estblistmentdata.Address1,
+            Estblistmentdata.Address2,
+            null,
+            Estblistmentdata.Town,
+            Estblistmentdata.County,
             Estblistmentdata.LocationID,
+            null,                               // PROV ID is not captured yet on registration
             Estblistmentdata.PostCode,
             Estblistmentdata.IsRegulated
           );
@@ -408,9 +418,10 @@ router.route('/')
             }
           });    // no Establishment properties on registration
           if (newEstablishment.hasMandatoryProperties && newEstablishment.isValid) {
-            await newEstablishment.save(Logindata.UserName, 0, t);
+            await newEstablishment.save(Logindata.UserName, false, 0, t);
             Estblistmentdata.id = newEstablishment.id;
             Estblistmentdata.eUID = newEstablishment.uid;
+            Estblistmentdata.NmdsId = newEstablishment.nmdsId;
           } else {
             // Establishment properties not valid
             throw new RegistrationException(
@@ -451,9 +462,12 @@ router.route('/')
           const slackMsg = req.body[0];
           delete slackMsg.user.password;
           delete slackMsg.user.securityQuestion;
-          delete slackMsg.user.securityAnswer;
-          slackMsg.NmdsId = Estblistmentdata.NmdsId;
+          delete slackMsg.user.securityQuestionAnswer;
+          slackMsg.nmdsId = Estblistmentdata.NmdsId;
+          slackMsg.establishmentUid = Estblistmentdata.eUID;
           slack.info("Registration", JSON.stringify(slackMsg, null, 2));
+          // post through feedback topic - async method but don't wait for a responseThe
+          sns.postToRegistrations(slackMsg);
 
           // gets here on success
           res.status(200);
@@ -464,7 +478,7 @@ router.route('/')
             "establishmentUid" : Estblistmentdata.eUID,
             "primaryUser" : Logindata.UserName,
             "nmdsId": Estblistmentdata.NmdsId ? Estblistmentdata.NmdsId : 'undefined'
-          }); 
+          });
         });
 
       } catch (err) {
@@ -492,7 +506,7 @@ router.route('/')
             defaultError = responseErrors.duplicateUsername;
           }
         }
-      
+
         throw new RegistrationException(
           err,
           defaultError.errCode,
@@ -609,7 +623,7 @@ router.post('/requestPasswordReset', async (req, res) => {
       } else {
         return res.status(200).send();
       }
- 
+
     } else {
       // non-disclosure - if account is not found, return 200 anyway - suggesting that an email has been found
       return res.status(200).send();
@@ -635,7 +649,7 @@ router.post('/validateResetPassword', async (req, res) => {
     console.error('Invalid UUID');
     return res.status(400).send();
   }
-  
+
   try {
     // username is on Login table, but email is on User table. Could join, but it's just as east to fetch each individual
     const passTokenResults = await models.passwordTracking.findOne({
@@ -689,8 +703,8 @@ router.post('/validateResetPassword', async (req, res) => {
         throw new Error(`Failed to find user matching reset token (${givenUuid})`);
       }
 
-      
- 
+
+
     } else {
       // token not found
       console.error(`registration POST /validateResetPassword - reset token (${givenUuid}) not found`);

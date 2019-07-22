@@ -12,6 +12,7 @@ export interface LoggedInEstablishment {
   nmdsId: string;
   isParent: boolean;
   parentName: string;
+  isFirstBulkUpload: boolean;
 }
 
 export interface LoggedInSession {
@@ -23,4 +24,5 @@ export interface LoggedInSession {
   lastLoggedIn: string;
   mainService: LoggedInMainService;
   role: Roles;
+  uid: string;
 }

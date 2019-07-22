@@ -1,6 +1,7 @@
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Injectable } from '@angular/core';
 import { Alert } from '@core/model/alert.model';
+import { LocalIdentifiersRequest, LocalIdentifiersResponse } from '@core/model/establishment.model';
 import {
   AvailableQualificationsResponse,
   QualificationRequest,
@@ -13,12 +14,8 @@ import { URLStructure } from '@core/model/url.model';
 import { BehaviorSubject, Observable } from 'rxjs';
 import { map } from 'rxjs/operators';
 
-import { Worker } from '../model/worker.model';
+import { Worker, WorkerEditResponse, WorkersResponse } from '../model/worker.model';
 import { EstablishmentService } from './establishment.service';
-
-interface WorkersResponse {
-  workers: Array<Worker>;
-}
 
 export interface Reason {
   id: number;
@@ -27,10 +24,6 @@ export interface Reason {
 
 interface LeaveReasonsResponse {
   reasons: Array<Reason>;
-}
-
-export interface WorkerEditResponse {
-  uid: string;
 }
 
 @Injectable({
@@ -77,6 +70,10 @@ export class WorkerService {
     this._alert$.next(alert);
   }
 
+  public hasJobRole(worker: Worker, id: number) {
+    return worker.mainJob.jobId === id || (worker.otherJobs && worker.otherJobs.some(j => j.jobId === id));
+  }
+
   setLastDeleted(name: string) {
     this.lastDeleted$.next(name);
   }
@@ -101,7 +98,11 @@ export class WorkerService {
     return this.http.get<Worker>(`/api/establishment/${this.establishmentService.establishmentId}/worker/${workerId}`);
   }
 
-  getAllWorkers() {
+  public getAllWorkersByUid(establishmentUid: string): Observable<Worker[]> {
+    return this.http.get<WorkersResponse>(`/api/establishment/${establishmentUid}/worker`).pipe(map(w => w.workers));
+  }
+
+  public getAllWorkers(): Observable<Worker[]> {
     return this.http
       .get<WorkersResponse>(`/api/establishment/${this.establishmentService.establishmentId}/worker`)
       .pipe(map(w => w.workers));
@@ -228,5 +229,15 @@ export class WorkerService {
     const temp = this.createStaffResponse;
     this.createStaffResponse = null;
     return temp;
+  }
+
+  public updateLocalIdentifiers(
+    establishmentUid: string,
+    request: LocalIdentifiersRequest
+  ): Observable<LocalIdentifiersResponse> {
+    return this.http.put<LocalIdentifiersResponse>(
+      `/api/establishment/${establishmentUid}/worker/localIdentifier`,
+      request
+    );
   }
 }

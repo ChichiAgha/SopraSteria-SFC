@@ -12,7 +12,7 @@ const AppConfig = require('./appConfig');
 const config = convict({
   env: {
     doc: 'The application environment',
-    format: ['production', 'development', 'test', 'accessibility', 'localhost'],
+    format: ['production', 'preproduction', 'development', 'test', 'accessibility', 'localhost'],
     default: 'localhost',
     env: 'NODE_ENV'
   },
@@ -136,7 +136,7 @@ const config = convict({
           doc: 'The server certificate (authority - ca)',
           format: String,
           default: 'TBC',
-        }  
+        }
       }
     },
     pool: {
@@ -189,7 +189,8 @@ const config = convict({
       secret: {
         doc: 'The JWT signing secret',
         format: '*',
-        env: 'Token_Secret'
+        default: 'nodeauthsecret',
+        env: 'TOKEN_SECRET'
       },
       ttl: {
         default : {
@@ -219,7 +220,12 @@ const config = convict({
           doc: 'The add user JWT audience',
           format: String,
           default: 'ADS-WDS-add-user'
-        }
+        },
+        internalAdminApp: {
+          doc: 'The JWT audience for the Internal Admin application',
+          format: String,
+          default: 'ADS-WDS-Internal-Admin-App'
+        },
       }
   },
   slack: {
@@ -255,7 +261,46 @@ const config = convict({
         format: String,
         default: 'bob'
       }
-    }
+    },
+    kinesis: {
+      enabled: {
+        doc: 'Enables/disables kinesis pump',
+        format: 'Boolean',
+        default: false,
+      },
+      establishments: {
+        doc: 'The name of the kinesis stream into which to pump all establishments',
+        format: String,
+        default: 'kensis-establishments',
+      },
+      workers: {
+        doc: 'The name of the kinesis stream into which to pump all workers',
+        format: String,
+        default: 'kensis-workers',
+      },
+      users: {
+        doc: 'The name of the kinesis stream into which to pump all users',
+        format: String,
+        default: 'kensis-users',
+      },
+    },
+    sns: {
+      enabled: {
+        doc: 'Enables/disables SNS posts',
+        format: 'Boolean',
+        default: false,
+      },
+      registrations: {
+        doc: 'The ARN of the SNS topic for registrations',
+        format: String,
+        default: 'sns-registrations-arn',
+      },
+      feedback: {
+        doc: 'The ARN of the SNS topic for feedback',
+        format: String,
+        default: 'sns-feedback-arn',
+      },
+    },
   },
   bulkupload: {
     region: {
@@ -274,6 +319,23 @@ const config = convict({
       default: 300,
     },
   },
+  public: {
+    download: {
+      baseurl: {
+        doc: 'The baseurl to S3 bucket where public download content will be stored',
+        format: '*',
+        default: 'https://sfc-public-dev.s3.eu-west-2.amazonaws.com/public/download',
+      },
+    },
+  },
+  admin: {
+    url: {
+      doc: 'The URL to redirect users to the admin application',
+      format: 'url',
+      default: 'https://unknown.com',
+      env: 'ADMIN_URL',
+    }
+  }
 });
 
 // Load environment dependent configuration
@@ -307,6 +369,10 @@ if (config.get('aws.secrets.use')) {
     // external APIs
     config.set('slack.url', AWSSecrets.slackUrl());
     config.set('notify.key', AWSSecrets.govNotify());
+    config.set('admin.url', AWSSecrets.adminUrl());
+
+    // token secret
+    config.set('jwt.secret', AWSSecrets.jwtSecret());
 
     AppConfig.ready = true;
     AppConfig.emit(AppConfig.READY_EVENT);

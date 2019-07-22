@@ -10,12 +10,15 @@ import {
 } from '@core/model/bulk-upload.model';
 import { ErrorDefinition } from '@core/model/errorSummary.model';
 import { AlertService } from '@core/services/alert.service';
+import { AuthService } from '@core/services/auth.service';
 import { BulkUploadService } from '@core/services/bulk-upload.service';
+import { DialogService } from '@core/services/dialog.service';
 import { EstablishmentService } from '@core/services/establishment.service';
-import { saveAs } from 'file-saver';
-import { filter } from 'lodash';
+import { filter, findIndex } from 'lodash';
 import { Subscription } from 'rxjs';
 import { take } from 'rxjs/operators';
+
+import { UploadWarningDialogComponent } from '../upload-warning-dialog/upload-warning-dialog.component';
 
 @Component({
   selector: 'app-uploaded-files-list',
@@ -29,6 +32,7 @@ export class UploadedFilesListComponent implements OnInit, OnDestroy {
   public totalErrors = 0;
   public totalWarnings = 0;
   public uploadedFiles: ValidatedFile[];
+  public validationErrors: Array<ErrorDefinition> = [];
   public validationComplete = false;
 
   constructor(
@@ -36,28 +40,30 @@ export class UploadedFilesListComponent implements OnInit, OnDestroy {
     private establishmentService: EstablishmentService,
     private i18nPluralPipe: I18nPluralPipe,
     private router: Router,
-    private alertService: AlertService
+    private alertService: AlertService,
+    private dialogService: DialogService,
+    private authService: AuthService
   ) {}
 
   ngOnInit() {
-    this.checkForUploadedFiles();
-    this.checkForSelectedFiles();
+    this.getUploadedFiles();
+    this.preValidateFilesSubscription();
   }
 
-  private checkForUploadedFiles(): void {
+  private getUploadedFiles(): void {
     this.subscriptions.add(
       this.bulkUploadService.uploadedFiles$.subscribe((uploadedFiles: ValidatedFile[]) => {
         if (uploadedFiles) {
-          this.checkForMandatoryFiles(uploadedFiles);
+          this.uploadedFiles = uploadedFiles;
         }
       })
     );
   }
 
-  private checkForSelectedFiles(): void {
+  private preValidateFilesSubscription(): void {
     this.subscriptions.add(
-      this.bulkUploadService.selectedFiles$.subscribe((selectedFiles: File[]) => {
-        if (selectedFiles) {
+      this.bulkUploadService.preValidateFiles$.subscribe((preValidateFiles: boolean) => {
+        if (preValidateFiles) {
           this.preValidateFiles();
         }
       })
@@ -68,8 +74,14 @@ export class UploadedFilesListComponent implements OnInit, OnDestroy {
     this.subscriptions.add(
       this.bulkUploadService
         .preValidateFiles(this.establishmentService.establishmentId)
+        .pipe(take(1))
         .subscribe(
-          (response: ValidatedFile[]) => this.checkForMandatoryFiles(response),
+          (response: ValidatedFile[]) => {
+            this.validationErrors = [];
+            this.checkForMandatoryFiles(response);
+            this.checkForInvalidFiles(response);
+            this.uploadedFiles = response;
+          },
           (response: HttpErrorResponse) => this.bulkUploadService.serverError$.next(response.error.message)
         )
     );
@@ -77,7 +89,6 @@ export class UploadedFilesListComponent implements OnInit, OnDestroy {
 
   private checkForMandatoryFiles(response: ValidatedFile[]): void {
     const files: string[] = response.map(data => this.bulkUploadFileTypeEnum[data.fileType]);
-    this.uploadedFiles = response;
 
     if (
       !files.includes(this.bulkUploadFileTypeEnum.Establishment) ||
@@ -89,6 +100,25 @@ export class UploadedFilesListComponent implements OnInit, OnDestroy {
     }
 
     this.bulkUploadService.preValidationError$.next(this.preValidationError);
+  }
+
+  private checkForInvalidFiles(response: ValidatedFile[]) {
+    response.forEach(file => {
+      if (!file.fileType || file.fileType === null) {
+        file.errors = 1;
+        this.validationErrors.push({
+          name: this.getFileId(file),
+          message: 'The file was not recognised',
+        });
+        this.preValidationError = true;
+      }
+    });
+    this.bulkUploadService.validationErrors$.next(this.validationErrors);
+  }
+
+  public getErrorMessage(file: ValidatedFile) {
+    const errorDefinition = this.validationErrors.find(validatedFile => validatedFile.name === this.getFileId(file));
+    return errorDefinition ? errorDefinition.message : null;
   }
 
   public getFileType(fileName: string): string {
@@ -114,45 +144,48 @@ export class UploadedFilesListComponent implements OnInit, OnDestroy {
     );
   }
 
-  public downloadReport(): void {
+  public beginCompleteUpload(): void {
+    const establishmentsFile = this.uploadedFiles.find(file => file.fileType === 'Establishment');
+    const workersFile = this.uploadedFiles.find(file => file.fileType === 'Worker');
+
+    if ((establishmentsFile && establishmentsFile.deleted > 0) || (workersFile && workersFile.deleted > 0)) {
+      const dialog = this.dialogService.open(UploadWarningDialogComponent, {
+        establishmentsFile,
+        workersFile,
+      });
+
+      dialog.afterClosed.subscribe(continueUpload => {
+        if (continueUpload) {
+          this.completeUpload();
+        }
+      });
+      return;
+    }
+    this.completeUpload();
+  }
+
+  public completeUpload() {
     this.bulkUploadService
-      .getReport(this.establishmentService.establishmentId)
+      .complete(this.establishmentService.establishmentId)
       .pipe(take(1))
       .subscribe(
-        response => {
-          const filenameRegEx = /filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/;
-          const filenameMatches = response.headers.get('content-disposition').match(filenameRegEx);
-          const filename = filenameMatches && filenameMatches.length > 1 ? filenameMatches[1] : null;
-          const blob = new Blob([response.body], { type: 'text/plain;charset=utf-8' });
-          saveAs(blob, filename);
+        () => {
+          this.authService.isFirstBulkUpload = false;
+          this.router.navigate(['/dashboard']);
+          this.authService.isFirstBulkUpload = false;
+          this.alertService.addAlert({ type: 'success', message: 'Bulk upload complete.' });
         },
-        () => {}
+        response => {
+          this.bulkUploadService.serverError$.next(response.error.message);
+        }
       );
   }
 
-  /**
-   * Set validate success update uploaded files
-   * And then set total warnings and/or errors and status
-   * @param response
-   */
-  private onValidateComplete(response: ValidatedFilesResponse): void {
-    this.uploadedFiles = [response.establishment, response.training, response.workers];
-    this.uploadedFiles = filter(this.uploadedFiles, 'filename');
-    const validationErrors: Array<ErrorDefinition> = [];
-
-    this.uploadedFiles.forEach((file: ValidatedFile) => {
-      file.status = file.errors ? FileValidateStatus.Fail : FileValidateStatus.Pass;
-      this.totalWarnings = this.totalWarnings + file.warnings;
-      this.totalErrors = this.totalErrors + file.errors;
-      if (file.errors) {
-        validationErrors.push(this.getValidationError(file));
-      }
-    });
-    this.bulkUploadService.validationErrors$.next(validationErrors);
-    this.validationComplete = true;
+  public displayDownloadReportLink(file: ValidatedFile) {
+    return file.errors > 0 || file.warnings > 0;
   }
 
-  private getValidationError(file: ValidatedFile): ErrorDefinition {
+  public getValidationError(file: ValidatedFile): ErrorDefinition {
     return {
       name: this.getFileId(file),
       message: this.i18nPluralPipe.transform(file.errors, {
@@ -162,8 +195,57 @@ export class UploadedFilesListComponent implements OnInit, OnDestroy {
     };
   }
 
+  public downloadFile(event: Event, key: string) {
+    event.preventDefault();
+
+    this.bulkUploadService
+      .getUploadedFileSignedURL(this.establishmentService.establishmentId, key)
+      .subscribe(signedURL => {
+        window.open(signedURL);
+      });
+  }
+
+  /**
+   * Set validate success update uploaded files
+   * And then set total warnings and/or errors and status
+   * @param response
+   */
+  private onValidateComplete(response: ValidatedFilesResponse): void {
+    // this.uploadedFiles = [response.establishment, response.training, response.workers];
+    this.validationErrors = [];
+
+    /* TODO: BE returns a different object for ValidatedFiles than UploadedFiles
+     *       previously we were just overwritting the uploaded files object with the
+     *       returned data, but that would then wipe out other information needed to
+     *       to display the uploaded files list. This now joins the objects together
+     *       but it would be a lot better if the API sent the same object back.
+     */
+    filter(response, 'filename').forEach((validatedFile: ValidatedFile) => {
+      const index = findIndex(this.uploadedFiles, ['fileType', validatedFile.fileType]);
+      this.uploadedFiles[index] = { ...this.uploadedFiles[index], ...validatedFile };
+      this.uploadedFiles[index].status = this.uploadedFiles[index].errors
+        ? FileValidateStatus.Fail
+        : FileValidateStatus.Pass;
+      this.totalWarnings = this.totalWarnings + this.uploadedFiles[index].warnings;
+      this.totalErrors = this.totalErrors + this.uploadedFiles[index].errors;
+      if (this.uploadedFiles[index].errors) {
+        this.validationErrors.push(this.getValidationError(this.uploadedFiles[index]));
+      }
+    });
+    this.bulkUploadService.validationErrors$.next(this.validationErrors);
+    this.validationComplete = true;
+  }
+
+  /**
+   * Strip off file extension
+   * Replace white spaces with '-'
+   * Then convert to lowercase
+   * @param file ValidatedFile
+   */
   private getFileId(file: ValidatedFile): string {
-    return `bulk-upload-validation-${file.filename.substr(0, file.filename.lastIndexOf('.'))}`;
+    const fileName: string = file.filename.substr(0, file.filename.lastIndexOf('.'));
+    const transformedFileName: string = fileName.replace(/\s/g, '-').toLowerCase();
+    return `bulk-upload-validation-${transformedFileName}`;
   }
 
   /**
@@ -173,22 +255,6 @@ export class UploadedFilesListComponent implements OnInit, OnDestroy {
   private onValidateError(response: HttpErrorResponse): void {
     const error: ValidatedFilesResponse = response.error;
     console.log(error);
-  }
-
-  public completeUpload(): void {
-    this.bulkUploadService.serverError$.next(null);
-    this.bulkUploadService
-      .complete(this.establishmentService.establishmentId)
-      .pipe(take(1))
-      .subscribe(
-        () => {
-          this.alertService.addAlert({ type: 'success', message: 'Bulk upload complete.' });
-          this.router.navigate(['/dashboard']);
-        },
-        response => {
-          this.bulkUploadService.serverError$.next(response.error.message);
-        }
-      );
   }
 
   get hasWarnings() {

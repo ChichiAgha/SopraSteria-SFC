@@ -3,7 +3,7 @@
  *
  * The encapsulation of a Worker, including all properties, all specific validation (not API, but object validation),
  * saving & restoring of data to database (via sequelize model), construction and deletion.
- * 
+ *
  * Also includes representation as JSON, in one or more presentations.
  */
 
@@ -21,6 +21,8 @@ const WorkerExceptions = require('./worker/workerExceptions');
 const Training = require('./training').Training;
 const Qualification = require('./qualification').Qualification;
 
+// notifications
+const AWSKinesis = require('../../aws/kinesis');
 
 // Worker properties
 const WorkerProperties = require('./worker/workerProperties').WorkerPropertyManager;
@@ -33,7 +35,7 @@ const WdfCalculator = require('./wdfCalculator').WdfCalculator;
 class Worker extends EntityValidator {
     constructor(establishmentId) {
         super();
-        
+
         this._establishmentId = establishmentId;
         this._id = null;
         this._uid = null;
@@ -44,6 +46,7 @@ class Worker extends EntityValidator {
         this._updated = null;
         this._updatedBy = null;
         this._auditEvents = null;
+        this._changeLocalIdentifer = null;
 
         // abstracted properties
         const thisWorkerManager = new WorkerProperties();
@@ -51,7 +54,7 @@ class Worker extends EntityValidator {
 
         // change properties
         this._isNew = false;
-        
+
         // default logging level - errors only
         // TODO: INFO logging on Worker; change to LOG_ERROR only
         this._logLevel = Worker.LOG_INFO;
@@ -117,7 +120,7 @@ class Worker extends EntityValidator {
     // this method add this given qualification (entity) as an association to this worker entity - (bulk import)
     //  - note, no unique key for a qualification; just simply an array of
     associateQualification(qualification) {
-        this._qualificationsEntities.push(qualification);    
+        this._qualificationsEntities.push(qualification);
     };
     // this method add this given training (entity) as an association to this worker entity - (bulk import)
     //  - note, no unique key for a training; just simply an array of
@@ -125,12 +128,26 @@ class Worker extends EntityValidator {
         this._trainingEntities.push(training);
     };
 
+    get qualifications() {
+        return this._qualificationsEntities;
+    }
+    get training() {
+        return this._trainingEntities;
+    }
+
+    get changeLocalIdentifer() {
+        return this._changeLocalIdentifer;
+    }
+
     get establishmentId() {
         return this._establishmentId;
     }
 
     set establishmentId(establishmentId) {
         this._establishmentId = establishmentId;
+    }
+    get localIdentifier() {
+        return this._properties.get('LocalIdentifier') ? this._properties.get('LocalIdentifier').property : null;
     }
 
     get nameOrId() {
@@ -141,6 +158,103 @@ class Worker extends EntityValidator {
             return null;
         }
     }
+
+    get key(){
+        return ((this._properties.get('LocalIdentifier') && this._properties.get('LocalIdentifier').property) ? this.localIdentifier.replace(/\s/g, "") : this.nameOrId).replace(/\s/g, "");
+    }
+
+    get contract() {
+        return this._properties.get('Contract') ? this._properties.get('Contract').property : null;
+    };
+
+    get postcode() {
+        return this._properties.get('Postcode') ? this._properties.get('Postcode').property : null;
+    };
+    get nationalInsuranceNumber() {
+        return this._properties.get('NationalInsuranceNumber') ? this._properties.get('NationalInsuranceNumber').property : null;
+    };
+    get dasteOfBirth() {
+        return this._properties.get('DateOfBirth') ? this._properties.get('DateOfBirth').property : null;
+    };
+    get gender() {
+        return this._properties.get('Gender') ? this._properties.get('Gender').property : null;
+    };
+    get disabiliity() {
+        return this._properties.get('Disability') ? this._properties.get('Disability').property : null;
+    };
+    get careCerticate() {
+        return this._properties.get('CareCertificate') ? this._properties.get('CareCertificate').property : null;
+    };
+    get approvedMentalHealthWorker() {
+        return this._properties.get('ApprovedMentalHealthWorker') ? this._properties.get('ApprovedMentalHealthWorker').property : null;
+    }
+
+    get socialCareQualification() {
+        return this._properties.get('QualificationInSocialCare') ? this._properties.get('QualificationInSocialCare').property : null;
+    }
+    get socialCareQualificationLevel() {
+        return this._properties.get('SocialCareQualification') ? this._properties.get('SocialCareQualification').property : null;
+    }
+    get nonSocialCareQualification() {
+        return this._properties.get('OtherQualifications') ? this._properties.get('OtherQualifications').property : null;
+    }
+    get nonSocialCareQualificationLevel() {
+        return this._properties.get('HighestQualification') ? this._properties.get('HighestQualification').property : null;
+    }
+    get ethnicity() {
+      return this._properties.get('Ethnicity') ? this._properties.get('Ethnicity').property : null;
+    };
+    get nationality() {
+      return this._properties.get('Nationality') ? this._properties.get('Nationality').property : null;
+    };
+    get countryOfBirth() {
+      return this._properties.get('CountryOfBirth') ? this._properties.get('CountryOfBirth').property : null;
+    };
+    get britishCitizenship() {
+      return this._properties.get('BritishCitizenship') ? this._properties.get('BritishCitizenship').property : null;
+    };
+    get yearArrived() {
+      return this._properties.get('YearArrived') ? this._properties.get('YearArrived').property : null;
+    };
+    get recruitmentSource() {
+      return this._properties.get('RecruitedFrom') ? this._properties.get('RecruitedFrom').property : null;
+    };
+    get mainJobStartDate() {
+      return this._properties.get('MainJobStartDate') ? this._properties.get('MainJobStartDate').property : null;
+    };
+    get socialCareStartDate() {
+      return this._properties.get('SocialCareStartDate') ? this._properties.get('SocialCareStartDate').property : null;
+    };
+    get apprenticeship() {
+      return this._properties.get('ApprenticeshipTraining') ? this._properties.get('ApprenticeshipTraining').property : null;
+    };
+    get zeeroContractHours() {
+      return this._properties.get('ZeroHoursContract') ? this._properties.get('ZeroHoursContract').property : null;
+    };
+    get daysSick() {
+      return this._properties.get('DaysSick') ? this._properties.get('DaysSick').property : null;
+    };
+    get annualHourlyPay() {
+      return this._properties.get('AnnualHourlyPay') ? this._properties.get('AnnualHourlyPay').property : null;
+    };
+    get mainJob() {
+      return this._properties.get('MainJob') ? this._properties.get('MainJob').property : null;
+    };
+    get contractedHours() {
+      return this._properties.get('WeeklyHoursContracted') ? this._properties.get('WeeklyHoursContracted').property : null;
+    };
+    get averageHours() {
+      return this._properties.get('WeeklyHoursAverage') ? this._properties.get('WeeklyHoursAverage').property : null;
+    };
+    get otherJobs() {
+      return this._properties.get('OtherJobs') ? this._properties.get('OtherJobs').property : null;
+    };
+    get registeredNurse() {
+      return this._properties.get('RegisteredNurse') ? this._properties.get('RegisteredNurse').property : null;
+    };
+    get nurseSpecialism() {
+      return this._properties.get('NurseSpecialism') ? this._properties.get('NurseSpecialism').property : null;
+    };
 
     // takes the given JSON document and creates a Worker's set of extendable properties
     // Returns true if the resulting Worker is valid; otherwise false
@@ -153,6 +267,10 @@ class Worker extends EntityValidator {
             // reason is not a managed property, load it specifically
             if (document.reason) {
                 this._reason = await this.validateReason(document.reason);
+            }
+
+            if(document.changeLocalIdentifer){
+                this._changeLocalIdentifer = document.changeLocalIdentifer;
             }
 
             // allow for deep restoration of entities (associations - namely Qualifications and Training here)
@@ -168,7 +286,7 @@ class Worker extends EntityValidator {
                 if (document.training && Array.isArray(document.training)) {
                     document.training.forEach(thisTraining => {
                         const newTrainingRecord = new Training(null, null);
-                        
+
                         this.associateTraining(newTrainingRecord);
                         promises.push(newTrainingRecord.load(thisTraining));
                     });
@@ -179,7 +297,7 @@ class Worker extends EntityValidator {
                 if (document.qualifications && Array.isArray(document.qualifications)) {
                     document.qualifications.forEach(thisQualificationRecord => {
                         const newQualificationRecord = new Qualification(null, null);
-                        
+
                         this.associateQualification(newQualificationRecord);
                         promises.push(newQualificationRecord.load(thisQualificationRecord));
                     });
@@ -348,24 +466,31 @@ class Worker extends EntityValidator {
                         }));
                     await models.workerAudit.bulkCreate(allAuditEvents, {transaction: thisTransaction});
 
-
-                    console.log("WA DEBUG - saving worker: ", this.nameOrId, associatedEntities)
-
                     if (associatedEntities) {
                         await this.saveAssociatedEntities(savedBy, bulkUploaded, thisTransaction);
                     }
 
+                    // this is an async method - don't wait for it to return
+                    AWSKinesis.workerPump(AWSKinesis.CREATED, this.toJSON());
+
                     this._log(Worker.LOG_INFO, `Created Worker with uid (${this._uid}) and id (${this._id})`);
                 });
-                
+
             } catch (err) {
                 // if the name/Id property is known, use it in the error message
                 const nameId = this._properties.get('NameOrId');
-                throw new WorkerExceptions.WorkerSaveException(null,
-                                                               this.uid,
-                                                               nameId ? nameId.property : null,
-                                                               err,
-                                                               null);
+
+                if (err.name && err.name === 'SequelizeUniqueConstraintError') {
+                    if(err.parent.constraint && ( err.parent.constraint === 'worker_LocalIdentifier_unq')){
+                        throw new WorkerExceptions.WorkerSaveException(null, this._uid, nameId ? nameId.property : null, 'Duplicate LocalIdentifier', 'Duplicate LocalIdentifier');
+                    }
+                } else {
+                    throw new WorkerExceptions.WorkerSaveException(null,
+                                                                this.uid,
+                                                                nameId ? nameId.property : null,
+                                                                err,
+                                                                null);
+                }
             }
         } else {
             // we are updating an existing worker
@@ -389,6 +514,11 @@ class Worker extends EntityValidator {
                         updated: updatedTimestamp,
                         updatedBy: savedBy.toLowerCase()
                     };
+
+                    if (this._changeLocalIdentifer) {
+                      // during bulk upload only, if the change local identifier value is set, then when saving this worker, update it's local identifier;
+                      updateDocument.LocalIdentifierValue = this._changeLocalIdentifer;
+                    }
 
                     // every time the worker is saved, need to calculate
                     //  it's current WDF Eligibility, and if it is eligible, update
@@ -471,6 +601,7 @@ class Worker extends EntityValidator {
                         });
                         await Promise.all(createMmodelPromises);
 
+                        /* https://trello.com/c/5V5sAa4w
                         // TODO: ideally I'd like to publish this to pub/sub topic and process async - but do not have pub/sub to hand here
                         // having updated the Worker, check to see whether it is necessary to recalculate
                         //  the overall WDF eligibility for this Worker's establishment and all its workers.
@@ -482,7 +613,10 @@ class Worker extends EntityValidator {
 
                         if (associatedEntities) {
                             await this.saveAssociatedEntities(savedBy, bulkUploaded, thisTransaction);
-                        }
+                        } */
+
+                        // this is an async method - don't wait for it to return
+                        AWSKinesis.workerPump(AWSKinesis.UPDATED, this.toJSON());
 
                         this._log(Worker.LOG_INFO, `Updated Worker with uid (${this._uid}) and id (${this._id})`);
 
@@ -496,15 +630,22 @@ class Worker extends EntityValidator {
                     }
 
                 });
-                
+
             } catch (err) {
                 // if the name/Id property is known, use it in the error message
                 const nameId = this._properties.get('NameOrId');
-                throw new WorkerExceptions.WorkerSaveException(null,
-                                                               this.uid,
-                                                               nameId ? nameId.property : null,
-                                                               err,
-                                                               `Failed to update worker record with uid: ${this._uid}`);
+
+                if (err.name && err.name === 'SequelizeUniqueConstraintError') {
+                    if(err.parent.constraint && ( err.parent.constraint === 'worker_LocalIdentifier_unq')){
+                        throw new WorkerExceptions.WorkerSaveException(null, this._uid, nameId ? nameId.property : null, 'Duplicate LocalIdentifier', 'Duplicate LocalIdentifier');
+                    }
+                } else {
+                    throw new WorkerExceptions.WorkerSaveException(null,
+                                                                this.uid,
+                                                                nameId ? nameId.property : null,
+                                                                err,
+                                                                `Failed to update worker record with uid: ${this._uid}`);
+                }
             }
 
         }
@@ -527,7 +668,7 @@ class Worker extends EntityValidator {
     // loads the Worker (with given id) from DB, but only if it belongs to the given Establishment
     // returns true on success; false if no Worker
     // Can throw WorkerRestoreException exception.
-    async restore(workerUid, showHistory=false) {
+    async restore(workerUid, showHistory=false, associatedEntities=false, associatedLevel) {
         if (!workerUid) {
             throw new WorkerExceptions.WorkerRestoreException(null,
                 null,
@@ -588,8 +729,12 @@ class Worker extends EntityValidator {
                         model: models.job,
                         as: 'otherJobs',
                         attributes: ['id', 'title']
+                    },
+                    {
+                        model: models.workerNurseSpecialism,
+                        as: 'nurseSpecialism',
+                        attributes: ['id', 'specialism']
                     }
-
                 ]
             };
 
@@ -597,6 +742,7 @@ class Worker extends EntityValidator {
             if (fetchResults && fetchResults.id && Number.isInteger(fetchResults.id)) {
                 // update self - don't use setters because they modify the change state
                 this._isNew = false;
+                this._id = fetchResults.id;
                 this._uid = workerUid;
                 this._created = fetchResults.created;
                 this._updated = fetchResults.updated;
@@ -624,6 +770,47 @@ class Worker extends EntityValidator {
                 // load extendable properties
                 await this._properties.restore(fetchResults, SEQUELIZE_DOCUMENT_TYPE);
 
+                // certainly for bulk upload, but also expected for cross-entity validations, restore all associated entities (qualifications and training)
+                if (associatedEntities) {
+                    const myQualificationsSet = await models.workerQualifications.findAll({
+                        attributes: ['uid'],
+                        where: {
+                            workerFk: this._id,
+                        },
+                    });
+
+                    if (myQualificationsSet && Array.isArray(myQualificationsSet)) {
+                        await Promise.all(myQualificationsSet.map(async thisQualification => {
+                            const newQualification = new Qualification(this._establishmentId, this._uid);
+                            newQualification.workerId = this._id;
+
+                            await newQualification.restore(thisQualification.uid, false);
+                            this.associateQualification(newQualification);
+
+                            return {};
+                        }));
+                    }
+
+                    const myTrainingSet = await models.workerTraining.findAll({
+                        attributes: ['uid'],
+                        where: {
+                            workerFk: this._id,
+                        },
+                    });
+
+                    if (myTrainingSet && Array.isArray(myTrainingSet)) {
+                        await Promise.all(myTrainingSet.map(async thisTrainingRecord => {
+                            const newTrainingRecord = new Training(this._establishmentId, this._uid);
+                            newTrainingRecord.workerId = this._id;
+
+                            await newTrainingRecord.restore(thisTrainingRecord.uid, false);
+                            this.associateTraining(newTrainingRecord);
+
+                            return {};
+                        }));
+                    }
+                }
+
                 return true;
             }
 
@@ -645,7 +832,7 @@ class Worker extends EntityValidator {
     // Can throw "WorkerDeleteException"
     async archive(deletedBy, externalTransaction=null, associatedEntities=false) {
         try {
-            
+
             const updatedTimestamp = new Date();
 
             // need to update the existing Worker record and add an
@@ -656,6 +843,7 @@ class Worker extends EntityValidator {
                 // now append the extendable properties
                 const updateDocument = {
                     archived: true,
+                    LocalIdentifierValue: null,
                     updated: updatedTimestamp,
                     updatedBy: deletedBy
                 };
@@ -699,6 +887,9 @@ class Worker extends EntityValidator {
                         // TODO - to be confirmed
                     }
 
+                    // this is an async method - don't wait for it to return
+                    AWSKinesis.workerPump(AWSKinesis.DELETED, this.toJSON());
+
                     this._log(Worker.LOG_INFO, `Archived Worker with uid (${this._uid}) and id (${this._id})`);
 
                 } else {
@@ -710,7 +901,7 @@ class Worker extends EntityValidator {
                                                                 `Failed to update (archive) worker record with uid: ${this._uid}`);
                 }
             });
-            
+
         } catch (err) {
             // if the name/Id property is known, use it in the error message
             const nameId = this._properties.get('NameOrId');
@@ -741,12 +932,12 @@ class Worker extends EntityValidator {
                         attributes: ['id', 'title']
                         }
                 ],
-                attributes: ['uid', 'NameOrIdValue', 'ContractValue', "CompletedValue", 'MainJobFkOther', 'lastWdfEligibility', "created", "updated", "updatedBy"],
+                attributes: ['uid', 'LocalIdentifierValue', 'NameOrIdValue', 'ContractValue', "CompletedValue", 'MainJobFkOther', 'lastWdfEligibility', "created", "updated", "updatedBy"],
                 order: [
                     ['updated', 'DESC']
                 ]
             });
-    
+
             if (fetchResults) {
                 const workerPromise = [];
                 const effectiveFromTime = WdfCalculator.effectiveTime;
@@ -755,6 +946,7 @@ class Worker extends EntityValidator {
                 fetchResults.forEach(thisWorker => {
                     allWorkers.push({
                         uid: thisWorker.uid,
+                        localIdentifier: thisWorker.LocalIdentifierValue ? thisWorker.LocalIdentifierValue : null ,
                         nameOrId: thisWorker.NameOrIdValue,
                         contract: thisWorker.ContractValue,
                         mainJob: {
@@ -828,7 +1020,8 @@ class Worker extends EntityValidator {
 
             // add worker default properties
             const myDefaultJSON = {
-                uid:  this.uid
+                uid:  this.uid,
+                changeLocalIdentifer: this.changeLocalIdentifer ? this.changeLocalIdentifer : undefined,
             };
 
             myDefaultJSON.created = this.created ? this.created.toJSON() : null;
@@ -853,6 +1046,7 @@ class Worker extends EntityValidator {
         } else {
             return {
                 uid:  this.uid,
+                changeLocalIdentifer: this.changeLocalIdentifer ? this.changeLocalIdentifer : undefined,
                 created: this.created.toJSON(),
                 updated: this.updated.toJSON(),
                 updatedBy: this.updatedBy,
@@ -898,14 +1092,14 @@ class Worker extends EntityValidator {
                 attributes: ['id'],
             });
             if (referenceEstablishment && referenceEstablishment.id && referenceEstablishment.id === establishmentId) return true;
-    
+
         } catch (err) {
             console.error(err);
         }
         return false;
     }
 
-    
+
     // returns true if all mandatory properties for a Worker exist and are valid
     get hasMandatoryProperties() {
         let allExistAndValid = true;    // assume all exist until proven otherwise
@@ -922,7 +1116,7 @@ class Worker extends EntityValidator {
                 ));
                 this._log(Worker.LOG_ERROR, 'Worker::hasMandatoryProperties - missing or invalid name or id property');
             }
-    
+
             const mainJobProperty = this._properties.get('MainJob');
             if (!(mainJobProperty && mainJobProperty.isInitialised && mainJobProperty.valid)) {
                 allExistAndValid = false;
@@ -934,7 +1128,7 @@ class Worker extends EntityValidator {
                 ));
                 this._log(Worker.LOG_ERROR, 'Worker::hasMandatoryProperties - missing or invalid main job property');
             }
-    
+
             const contractProperty = this._properties.get('Contract');
             if (!(contractProperty && contractProperty.isInitialised && contractProperty.valid)) {
                 allExistAndValid = false;
@@ -946,7 +1140,7 @@ class Worker extends EntityValidator {
                 ));
                 this._log(Worker.LOG_ERROR, 'Worker::hasMandatoryProperties - missing or invalid contract property');
             }
-    
+
         } catch (err) {
             console.error(err)
         }
@@ -1062,8 +1256,8 @@ class Worker extends EntityValidator {
         myWdf['recruitedFrom'] = this._isPropertyWdfBasicEligible(effectiveFromEpoch, this._properties.get('RecruitedFrom')) ? 'Yes' : 'No';
         myWdf['contract'] = this._isPropertyWdfBasicEligible(effectiveFromEpoch, this._properties.get('Contract')) ? 'Yes' : 'No';
 
-        // zero hours contract, contracted/average weekly hours (dependent on zero hours selected and on employment status/contract), 
-        
+        // zero hours contract, contracted/average weekly hours (dependent on zero hours selected and on employment status/contract),
+
         const CONTRACT_TYPE = ['Permanent', 'Temporary', 'Pool/Bank', 'Agency', 'Other'];
         myWdf['zeroHoursContract'] = this._isPropertyWdfBasicEligible(effectiveFromEpoch, this._properties.get('ZeroHoursContract')) ? 'Yes' : 'No';
         if (this._properties.get('ZeroHoursContract').property === null) {
@@ -1119,7 +1313,7 @@ class Worker extends EntityValidator {
         } else {
             myWdf['highestQualification'] = this._isPropertyWdfBasicEligible(effectiveFromEpoch, this._properties.get('HighestQualification')) ? 'Yes' : 'No';
         }
-        
+
         return myWdf;
     }
 

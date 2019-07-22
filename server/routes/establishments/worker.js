@@ -4,12 +4,14 @@
 
 const express = require('express');
 const router = express.Router({mergeParams: true});
+const Establishment = require('../../models/classes/establishment');
 
 const isLocal = require('../../utils/security/isLocalTest').isLocal;
 const WdfUtils = require('../../utils/wdfEligibilityDate');
 
 // all worker functionality is encapsulated
 const Workers = require('../../models/classes/worker');
+const models = require('../../models');
 
 // parent route defines the "id" parameter
 
@@ -24,13 +26,18 @@ const validateWorker = async (req, res, next) => {
 
     // if the request for this worker is by a user associated with parent, and the requested establishment is
     //  not their primary establishment, then they must have been granted "staff" level permission to access the worker
-    if (req.isParent && req.establishmentId !== req.establishment.id) {
-        // the requestor is both a parent and they are requesting against non-primary establishment (aka a subsidiary)
-        if (req.parentPermissions === null ||
-            req.parentPermissions !== "Workplace and Staff") {
-                console.error("validateWorker authorisation - parent is requesting a subdiaries worker without required permission");
-                return res.status(403).send('Not Found');
-        }
+    if (req.establishmentId !== req.establishment.id) {
+      // the requestor is both a parent and they are requesting against non-primary establishment (aka a subsidiary)
+      if (!req.parentIsOwner  &&
+          (req.parentPermissions === null || req.parentPermissions !== "Workplace and Staff")) {
+        console.error(`Parent not permitted to access Worker with id: ${workerId}`);
+        return res.status(403).send({ message: `Parent not permitted to access Worker with id: ${workerId ? workerId : 'not applicable'}` });
+      }
+
+      // more so, if the parent is not the owner, then only read access is allow
+      if (req.method !== 'GET') {
+        return res.status(403).send({ message: `Parent not permitted to access Worker with id: ${workerId ? workerId : 'not applicable'}` });
+      }
     }
 
 
@@ -58,9 +65,59 @@ const validateWorker = async (req, res, next) => {
     }
 };
 
-router.use('/', validateWorker);
+
+const updateLocalIdOnWorker = async (thisGivenWorker, transaction, updatedTimestamp, username, allAuditEvents) => {
+    const updatedWorker = await models.worker.update(
+    {
+        LocalIdentifierValue: thisGivenWorker.value,
+        LocalIdentifierSavedBy: username,
+        LocalIdentifierChangedBy: username,
+        LocalIdentifierSavedAt: updatedTimestamp,
+        LocalIdentifierChangedAt: updatedTimestamp,
+        updated: updatedTimestamp,
+        updatedBy: username,
+    },
+    {
+        returning: true,
+        where: {
+            uid: thisGivenWorker.uid
+        },
+        attributes: ['id', 'updated'],
+        transaction,
+    }
+    );
+
+    if (thisGivenWorker[0] === 1) {
+    const updatedRecord = thisGivenWorker[1][0].get({plain: true});
+
+    allAuditEvents.push({
+        workerFk: updatedRecord._id,
+        username,
+        type: 'updated'
+    });
+
+    allAuditEvents.push({
+        workerFk: updatedRecord._id,
+        username,
+        type: 'saved',
+        property: 'LocalIdentifier',
+    });
+    allAuditEvents.push({
+        workerFk: updatedRecord._id,
+        username,
+        type: 'changed',
+        property: 'LocalIdentifier',
+        event: {
+        new: thisGivenWorker.value
+        }
+    });
+    }
+}
+
 router.use('/:workerId/training', [validateWorker, TrainingRoutes]);
 router.use('/:workerId/qualification', [validateWorker, QualificationRoutes]);
+router.use('/:workerId', validateWorker);
+router.use('/', validateWorker);
 
 // gets all workers
 router.route('/').get(async (req, res) => {
@@ -76,6 +133,71 @@ router.route('/').get(async (req, res) => {
         return res.status(503).send('Failed to get workers for establishment having id: '+establishmentId);
     }
 });
+
+// Update all worker ids in one transaction
+router.route('/localIdentifier').put(async (req, res) => {
+    const establishmentId = req.establishmentId;
+    const username = req.username;
+
+    // validate input
+    const givenLocalIdentifiers = req.body.localIdentifiers;
+    if (!givenLocalIdentifiers || !Array.isArray(givenLocalIdentifiers)) {
+      return res.status(400).send({});
+    }
+
+    const thisEstablishment = new Establishment.Establishment(username);
+
+    try {
+      // as a minimum for security purposes, we restore the user's primary establishment
+      if (await thisEstablishment.restore(establishmentId)) {
+
+        const myWorkers = await Workers.Worker.fetch(establishmentId);
+
+        const myWorkersUIDs = myWorkers.map(worker => worker.uid);
+
+        const updatedTimestamp = new Date();
+        const updatedUids = [];
+        await models.sequelize.transaction(async t => {
+          const dbUpdatePromises = [];
+          const allAuditEvents = [];
+
+          givenLocalIdentifiers.forEach(thisGivenWorker => {
+            if (thisGivenWorker && thisGivenWorker.uid && myWorkersUIDs.includes(thisGivenWorker.uid)) {
+              const updateThisWorker = updateLocalIdOnWorker(thisGivenWorker, t, updatedTimestamp, username, allAuditEvents);
+              dbUpdatePromises.push(updateThisWorker);
+              updatedUids.push(thisGivenWorker);
+            }
+          });
+
+          await Promise.all(dbUpdatePromises);
+          await models.workerAudit.bulkCreate(allAuditEvents, {transaction: t});
+        });
+
+        return res.status(200).json({
+          id: thisEstablishment.id,
+          uid: thisEstablishment.uid,
+          name: thisEstablishment.name,
+          updated: updatedTimestamp.toISOString(),
+          updatedBy: req.username,
+          localIdentifiers: updatedUids,
+        });
+
+      } else {
+        return res.status(404).send('Not Found');
+      }
+    } catch (err) {
+      if (err.name && err.name === 'SequelizeUniqueConstraintError') {
+        if(err.parent.constraint && ( err.parent.constraint === 'worker_LocalIdentifier_unq')){
+            console.error("Worker::localidentifier PUT: ", err.message);
+            return res.status(400).send({duplicateValue: err.fields.LocalIdentifierValue});
+        }
+      }
+      console.log(err);
+      return res.status(503).send(err.message);
+    }
+});
+
+
 
 // gets requested worker id
 // optional parameter - "history" must equal 1
@@ -121,7 +243,7 @@ router.route('/:workerId').get(async (req, res) => {
 router.route('/').post(async (req, res) => {
     const establishmentId = req.establishmentId;
     const newWorker = new Workers.Worker(establishmentId);
-    
+
     try {
         // TODO: JSON validation
         const isValidWorker = await newWorker.load(req.body);
@@ -162,9 +284,9 @@ router.route('/:workerId').put(async (req, res) => {
     // validating worker id - must be a V4 UUID
     const uuidRegex = /^[0-9A-F]{8}-[0-9A-F]{4}-4[0-9A-F]{3}-[89AB][0-9A-F]{3}-[0-9A-F]{12}$/;
     if (!uuidRegex.test(workerId.toUpperCase())) return res.status(400).send('Unexpected worker id');
-    
+
     const thisWorker = new Workers.Worker(establishmentId);
-    
+
     try {
         // before updating a Worker, we need to be sure the Worker is
         //  available to the given establishment. The best way of doing that
@@ -186,14 +308,17 @@ router.route('/:workerId').put(async (req, res) => {
             } else {
                 return res.status(400).send('Unexpected Input.');
             }
-            
+
         } else {
             // not found worker
             return res.status(404).send('Not Found');
         }
 
     } catch (err) {
-        if (err instanceof Workers.WorkerExceptions.WorkerJsonException) {
+        if (err instanceof Workers.WorkerExceptions.WorkerSaveException && err.message == 'Duplicate LocalIdentifier') {
+            console.error("Worker::localidentifier PUT: ", err.message);
+            return res.status(400).send(err.safe);
+        } else if (err instanceof Workers.WorkerExceptions.WorkerJsonException) {
             console.error("Worker PUT: ", err.message);
             return res.status(400).send(err.safe);
         } else if (err instanceof Workers.WorkerExceptions.WorkerSaveException) {
@@ -217,7 +342,7 @@ router.route('/:workerId').delete(async (req, res) => {
     if (!uuidRegex.test(workerId.toUpperCase())) return res.status(400).send('Unexpected worker id');
 
     const thisWorker = new Workers.Worker(establishmentId);
-    
+
     try {
         // before deleting a Worker, we need to be sure the Worker is
         //  available to the given establishment. The best way of doing that

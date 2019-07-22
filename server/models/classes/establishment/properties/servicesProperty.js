@@ -20,8 +20,37 @@ exports.ServicesProperty = class ServicesProperty extends ChangePropertyPrototyp
 
     // concrete implementations
     async restoreFromJson(document) {
+        // typically, all services (this._allServices) for this `Other Service` property will be set when restoring the establishment and this property from the database
+        //  but during bulk upload, the Establishment will be restored from JSON not database. In those situations, this._allServices will be null, and it
+        //  will be necessary to populate this._allServices from the given JSON document. When restoring fully from JSON, then the
+        //  all services as given fromt he JSON (load) document must take precedence over any stored.
+        if (document.allMyServices && Array.isArray(document.allMyServices) && document.mainService) {
+            // whilst serialising from JSON other services, make a note of main service and all "other" services
+            //  - required in toJSON response and for validation
+            this._allServices = this.mergeServices(
+                document.allMyServices,
+                document.otherServices,
+                document.mainService,
+            );
+
+            if (document.mainService) this._mainService = document.mainService;            // can be an empty array
+        }
+
+        // if restoring from an Establishment's full JSON presentation, rather than from the establishment/:eid/services endpoint, transform the set of "otherServices" into the required input set of "services"
+        if (document.otherServices) {
+            if (Array.isArray(document.otherServices)) {
+                document.services = [];
+                document.otherServices.forEach(thisServiceCategory => {
+                    thisServiceCategory.services.forEach(thisService => {
+                        document.services.push({
+                            id: thisService.id
+                        });
+                    });
+                });
+            }
+        }
+
         if (document.services) {
-            // can be an empty array
             if (Array.isArray(document.services)) {
                 const validatedServices = await this._validateServices(document.services);
 
@@ -72,7 +101,7 @@ exports.ServicesProperty = class ServicesProperty extends ChangePropertyPrototyp
                     id: thisService.id,
                     name: thisService.name,
                     category: thisService.category,
-                    other: thisService.other ? thisService.other : undefined                    
+                    other: thisService.other ? thisService.other : undefined
                 };
             });
         }
@@ -109,7 +138,7 @@ exports.ServicesProperty = class ServicesProperty extends ChangePropertyPrototyp
             //  current value, and confirm it is in the the new data set.
             //  Array.every will drop out on the first iteration to return false
             arraysEqual = currentValue.every(thisService => {
-                return newValue.find(newService => 
+                return newValue.find(newService =>
                     newService.id === thisService.id && (
                         (thisService.other && newService.other && thisService.other === newService.other) ||
                         (!thisService.other && !newService.other)

@@ -1,7 +1,16 @@
 import { NgModule } from '@angular/core';
 import { RouterModule, Routes } from '@angular/router';
+import { EditUserPermissionsGuard } from '@core/guards/edit-user-permissions/edit-user-permissions.guard';
 import { ParentGuard } from '@core/guards/parent/parent.guard';
+import { RoleGuard } from '@core/guards/role/role.guard';
+import { Roles } from '@core/model/roles.enum';
+import { UserAccountResolver } from '@core/resolvers/user-account.resolver';
+import { WorkplaceResolver } from '@core/resolvers/workplace.resolver';
+import { CreateUserAccountComponent } from '@features/workplace/create-user-account/create-user-account.component';
+import { UserAccountSavedComponent } from '@features/workplace/user-account-saved/user-account-saved.component';
+import { UserAccountViewComponent } from '@features/workplace/user-account-view/user-account-view.component';
 import { ViewMyWorkplacesComponent } from '@features/workplace/view-my-workplaces/view-my-workplaces.component';
+import { ViewWorkplaceComponent } from '@features/workplace/view-workplace/view-workplace.component';
 
 import { CheckAnswersComponent } from './check-answers/check-answers.component';
 import { ConfirmLeaversComponent } from './confirm-leavers/confirm-leavers.component';
@@ -20,8 +29,10 @@ import { StartComponent } from './start/start.component';
 import { StartersComponent } from './starters/starters.component';
 import { SuccessComponent } from './success/success.component';
 import { TypeOfEmployerComponent } from './type-of-employer/type-of-employer.component';
+import {
+  UserAccountEditPermissionsComponent,
+} from './user-account-edit-permissions/user-account-edit-permissions.component';
 import { VacanciesComponent } from './vacancies/vacancies.component';
-import { WorkplaceResolver } from './workplace.resolver';
 
 const routes: Routes = [
   {
@@ -35,14 +46,15 @@ const routes: Routes = [
     data: { title: 'Start' },
   },
   {
-    path: ':establishmentid',
+    path: ':establishmentuid',
     component: EditWorkplaceComponent,
     resolve: { establishment: WorkplaceResolver },
     data: { title: 'Workplace' },
     children: [
       {
         path: '',
-        redirectTo: 'type-of-employer',
+        component: ViewWorkplaceComponent,
+        data: { title: 'View Workplace' },
       },
       {
         path: 'start',
@@ -122,6 +134,41 @@ const routes: Routes = [
         path: 'success',
         component: SuccessComponent,
         data: { title: 'Success' },
+      },
+      {
+        path: 'user/create',
+        component: CreateUserAccountComponent,
+        canActivate: [RoleGuard],
+        data: {
+          roles: [Roles.Edit],
+          title: 'Create User Account',
+        },
+      },
+      {
+        path: 'user/saved',
+        component: UserAccountSavedComponent,
+        data: { title: 'User Account Saved' },
+      },
+      {
+        path: 'user/:useruid',
+        data: { title: 'View User Account' },
+        children: [
+          {
+            path: '',
+            component: UserAccountViewComponent,
+            resolve: { user: UserAccountResolver },
+          },
+          {
+            path: 'permissions',
+            component: UserAccountEditPermissionsComponent,
+            canActivate: [RoleGuard, EditUserPermissionsGuard],
+            resolve: { user: UserAccountResolver },
+            data: {
+              roles: [Roles.Edit],
+              title: 'Edit Permissions',
+            },
+          },
+        ],
       },
     ],
   },

@@ -1,34 +1,58 @@
 import 'core-js';
 
-import { Component, OnInit } from '@angular/core';
+import { Component, ElementRef, enableProdMode, OnInit, ViewChild } from '@angular/core';
+import { Title } from '@angular/platform-browser';
 import { NavigationEnd, Router } from '@angular/router';
-import { TitleService } from '@core/services/title.service';
+import { NestedRoutesService } from '@core/services/nested-routes.service';
 import { Angulartics2GoogleGlobalSiteTag } from 'angulartics2/gst';
 import { filter } from 'rxjs/operators';
+
+enableProdMode();
 
 @Component({
   selector: 'app-root',
   templateUrl: './app.component.html',
 })
 export class AppComponent implements OnInit {
-  title = 'ng-sfc-v2';
+  private baseTitle = 'Skills for Care';
+  @ViewChild('top') top: ElementRef;
+  @ViewChild('content') content: ElementRef;
 
   constructor(
     private router: Router,
-    private titleService: TitleService,
+    private title: Title,
+    private nestedRoutesService: NestedRoutesService,
     private angulartics: Angulartics2GoogleGlobalSiteTag
   ) {
-    this.titleService.init('Skills for Care');
+    this.nestedRoutesService.routes$.subscribe(routes => {
+      if (routes) {
+        const titles = routes.reduce(
+          (titleArray, breadcrumb) => {
+            titleArray.push(breadcrumb.title);
+            return titleArray;
+          },
+          [this.baseTitle]
+        );
+
+        this.title.setTitle(titles.join(' - '));
+      }
+    });
+
     this.angulartics.startTracking();
   }
 
   ngOnInit() {
     this.router.events.pipe(filter(event => event instanceof NavigationEnd)).subscribe(() => {
       window.scrollTo(0, 0);
+      if (document.activeElement !== document.body) {
+        (document.activeElement as HTMLElement).blur();
+      }
+      this.top.nativeElement.focus();
     });
+  }
 
-    // if (localStorage.getItem('auth-token')) {
-    //   localStorage.clear();
-    // }
+  public skip(event: Event) {
+    event.preventDefault();
+    this.content.nativeElement.focus();
   }
 }

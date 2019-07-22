@@ -9,7 +9,7 @@
 <app-total-staff-panel [totalStaff]="totalStaff" [totalWorkers]="calculatedTotalStaff"></app-total-staff-panel>
 
 <form novalidate (ngSubmit)="submitHandler()" [formGroup]="form">
-  <div formArrayName="staffRecords">
+  <div [formArrayName]="'staffRecords'">
     <div *ngFor="let staffRecord of staffRecordsControl.controls; let i = index" [formGroupName]="i">
       <ng-container *ngIf="staffRecord.get('active').value; then form; else summary"></ng-container>
 
@@ -22,12 +22,16 @@
             </dd>
             <dd class="govuk-summary-list__actions">
               <a class="govuk-link--no-visited-state" href="#" (click)="deleteStaffRecord($event, i)">
-                Delete<span class="govuk-visually-hidden"> basic record</span>
+                Delete<span class="govuk-visually-hidden">
+                  basic record for {{ staffRecord.get('nameOrId').value }}
+                </span>
               </a>
             </dd>
             <dd class="govuk-summary-list__actions">
               <a class="govuk-link--no-visited-state" href="#" (click)="openStaffRecord($event, i)">
-                View or Change<span class="govuk-visually-hidden"> basic record</span>
+                View or Change<span class="govuk-visually-hidden">
+                  basic record for {{ staffRecord.get('nameOrId').value }}
+                </span>
               </a>
             </dd>
           </ng-container>
@@ -56,7 +60,7 @@
             <input
               class="govuk-input govuk-input--width-20"
               [class.govuk-input--error]="staffRecord.get('nameOrId').invalid && staffRecord.get('nameOrId').touched"
-              formControlName="nameOrId"
+              [formControlName]="'nameOrId'"
               id="nameOrId-{{ i }}"
               type="text"
             />
@@ -83,7 +87,7 @@
               [class.govuk-select--error]="
                 staffRecord.get('mainJobRole').invalid && staffRecord.get('mainJobRole').touched
               "
-              formControlName="mainJobRole"
+              [formControlName]="'mainJobRole'"
               id="mainJobRole-{{ i }}"
             >
               <option [ngValue]="null">Select Main Job Role</option>
@@ -116,7 +120,7 @@
             </span>
             <input
               class="govuk-input govuk-input--width-20"
-              formControlName="otherJobRole"
+              [formControlName]="'otherJobRole'"
               id="otherJobRole-conditional"
               name="otherJobRole"
               type="text"
@@ -145,7 +149,7 @@
               <div class="govuk-radios__item" *ngFor="let contract of contracts; let idx = index">
                 <input
                   class="govuk-radios__input"
-                  formControlName="contract"
+                  [formControlName]="'contract'"
                   id="contract-{{ i }}-{{ idx }}"
                   type="radio"
                   [value]="contract"

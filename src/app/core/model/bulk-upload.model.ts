@@ -40,10 +40,21 @@ export interface UploadedFilesResponse {
   files: ValidatedFile[];
 }
 
+export interface UploadedFilesRequestToDownloadResponse {
+  file: {
+    filename: string;
+    uploaded: Date;
+    username: string;
+    size: number;
+    key: string;
+    signedUrl: string;
+  };
+}
+
 export interface ValidatedFile {
   errors: number;
   filename: string;
-  fileType: string;
+  fileType: ValidatedFileType;
   key: string;
   records: number;
   size: number;
@@ -51,4 +62,9 @@ export interface ValidatedFile {
   status?: FileValidateStatus;
   warnings: number;
   username: string;
+  deleted?: number;
 }
+
+export type ValidatedFileType = 'Establishment' | 'Training' | 'Worker';
+
+export type ReportTypeRequestItem = 'establishments' | 'training' | 'workers';
