@@ -84,7 +84,7 @@ deploy:
     on:
         branch: develop_accessibility_demo
 
-   - provider: cloudfoundry
+  - provider: cloudfoundry
     edge: true
     username: nmdsdevopsserviceadm@hotmail.com
     password:
