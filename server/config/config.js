@@ -12,7 +12,7 @@ const AppConfig = require('./appConfig');
 const config = convict({
   env: {
     doc: 'The application environment',
-    format: ['production', 'preproduction', 'development', 'test', 'accessibility', 'localhost'],
+    format: ['production', 'preproduction', 'development', 'test', 'accessibility', 'scale','localhost'],
     default: 'localhost',
     env: 'NODE_ENV'
   },

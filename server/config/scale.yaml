@@ -1,0 +1,40 @@
+aws:
+    region: eu-west-1
+    secrets:
+        use: false
+        wallet: scale/api
+    kinesis:
+      enabled: false
+    sns:
+      enabled: false
+
+db:
+    pool: 10
+    ssl: true
+    username: sfcapp
+    client_ssl:
+        status: true
+        usingFiles: false
+
+slack:
+    level : 3     # enables Slack notifications
+
+jwt:
+    iss: 'sfcscale.cloudapps.digital'
+    ttl:
+        login: 30
+
+bulkupload:
+    region: eu-west-2
+    bucketname: sfc-bulkupload-dev
+    validation:
+        timeout: 300
+        storeIntermediaries: true
+    completion:
+        timeout: 180
+
+public:
+    download:
+        baseurl: https://sfc-public-dev.s3.eu-west-2.amazonaws.com/public/download
+
+# no notify definition - not used in development
