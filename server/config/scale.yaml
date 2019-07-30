@@ -1,7 +1,7 @@
 aws:
     region: eu-west-1
     secrets:
-        use: false
+        use: true
         wallet: scale/api
     kinesis:
       enabled: false
@@ -9,9 +9,10 @@ aws:
       enabled: false
 
 db:
-    pool: 10
+    pool: 15
     ssl: true
     username: sfcapp
+    database: sfcloadtstdb
     client_ssl:
         status: true
         usingFiles: false
