@@ -12,7 +12,7 @@ const AppConfig = require('./appConfig');
 const config = convict({
   env: {
     doc: 'The application environment',
-    format: ['production', 'preproduction', 'development', 'test', 'accessibility', 'localhost'],
+    format: ['production', 'preproduction', 'qa', 'development', 'test', 'accessibility', 'localhost'],
     default: 'localhost',
     env: 'NODE_ENV'
   },
@@ -381,9 +381,9 @@ if (config.get('aws.secrets.use')) {
     // DB rebind
     config.set('db.host', AWSSecrets.dbHost());
     config.set('db.password', AWSSecrets.dbPass());
-    config.set('db.client_ssl.data.certificate', AWSSecrets.dbAppUserCertificate().replace(/\\n/g, "\n"));
-    config.set('db.client_ssl.data.key', AWSSecrets.dbAppUserKey().replace(/\\n/g, "\n"));
-    config.set('db.client_ssl.data.ca', AWSSecrets.dbAppRootCertificate().replace(/\\n/g, "\n"));
+    //config.set('db.client_ssl.data.certificate', AWSSecrets.dbAppUserCertificate().replace(/\\n/g, "\n"));
+    //config.set('db.client_ssl.data.key', AWSSecrets.dbAppUserKey().replace(/\\n/g, "\n"));
+    //config.set('db.client_ssl.data.ca', AWSSecrets.dbAppRootCertificate().replace(/\\n/g, "\n"));
 
     // external APIs
     config.set('slack.url', AWSSecrets.slackUrl());
